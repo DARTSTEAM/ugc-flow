@@ -5,6 +5,7 @@ import type { UGC, Campana } from './data';
 import UGCsTab from './components/UGCsTab';
 import CampanasTab from './components/CampanasTab';
 import CampanaDetail from './components/CampanaDetail';
+import NuevaCampanaModal from './components/NuevaCampanaModal';
 import logoNgr from './assets/Logo-ngr.png';
 
 type TabId = 'ugcs' | 'campanas';
@@ -19,6 +20,7 @@ export default function App() {
   const [ugcs, setUGCs] = useState<UGC[]>(UGCS_MOCK);
   const [campanas, setCampanas] = useState<Campana[]>(CAMPANAS_MOCK);
   const [selectedCampana, setSelectedCampana] = useState<Campana | null>(null);
+  const [showNuevaCampana, setShowNuevaCampana] = useState(false);
 
   // UGC handlers
   function handleUpdateUGC(ugc: UGC) {
@@ -53,6 +55,13 @@ export default function App() {
 
   function handleSelectCampana(c: Campana) {
     setSelectedCampana(c);
+    setActiveTab('campanas');
+  }
+
+  function handleCrearCampana(nueva: Campana) {
+    setCampanas(prev => [...prev, nueva]);
+    setShowNuevaCampana(false);
+    setSelectedCampana(nueva);
     setActiveTab('campanas');
   }
 
@@ -206,7 +215,7 @@ export default function App() {
               onSelectCampana={handleSelectCampana}
               onTogglePause={handleTogglePause}
               onLanzar={handleLanzar}
-              onAddCampana={() => {}}
+              onAddCampana={() => setShowNuevaCampana(true)}
             />
           )}
           {activeTab === 'campanas' && selectedCampana && (
@@ -220,6 +229,13 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {showNuevaCampana && (
+        <NuevaCampanaModal
+          onClose={() => setShowNuevaCampana(false)}
+          onCrear={handleCrearCampana}
+        />
+      )}
     </div>
   );
 }

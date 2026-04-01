@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import {
   ArrowLeft, Rocket, Pause, Play, TrendingUp, TrendingDown,
-  BarChart3, Users, Mail, CheckCircle, ChevronDown, ChevronUp, ChevronsUpDown, Award
+  BarChart3, Users, Mail, CheckCircle, ChevronDown, ChevronUp, ChevronsUpDown, Award,
+  MessageCircleMore, X, Send, Zap
 } from 'lucide-react';
 import type { Campana, UGC, EstadoEnCampana } from '../data';
 import {
@@ -47,6 +48,9 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   const [sortKey, setSortKey] = useState<SortKey2>('score');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [showLanzarModal, setShowLanzarModal] = useState(false);
+  const [overrideUGC, setOverrideUGC] = useState<UGC | null>(null);
+  const [overrideMsg, setOverrideMsg] = useState('');
+  const [overrideSent, setOverrideSent] = useState(false);
 
   const estadoCfg = ESTADO_CAMPANA_CONFIG[campana.estado];
 
@@ -227,8 +231,14 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                     </td>
                     <td className="py-3 px-4 border-b border-slate-50">
                       <div className="flex items-center gap-1">
-                        <button className="px-2 py-1 text-[10px] font-semibold border border-slate-200 rounded hover:bg-slate-50 text-slate-500 transition-colors">Ver conv.</button>
-                        <button className="px-2 py-1 text-[10px] font-semibold border border-slate-200 rounded hover:bg-slate-50 text-slate-500 transition-colors">Score</button>
+                        <button
+                          onClick={() => { setOverrideUGC(ugc!); setOverrideMsg(''); setOverrideSent(false); }}
+                          title="Override bot — contactar directamente"
+                          className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors whitespace-nowrap"
+                        >
+                          <Zap className="w-3 h-3" />
+                          Override
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -271,6 +281,96 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
             })}
           </div>
         </div>
+      )}
+
+      {/* Override Bot Modal */}
+      {overrideUGC && (
+        <>
+          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-50 overlay-enter" onClick={() => setOverrideUGC(null)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto modal-enter">
+              {/* Header */}
+              <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
+                    <Zap className="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900">Override del bot</h3>
+                    <p className="text-xs text-slate-400">Contacto directo a <span className="font-semibold text-slate-600">{overrideUGC.nombre}</span></p>
+                  </div>
+                </div>
+                <button onClick={() => setOverrideUGC(null)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="px-6 py-4 flex flex-col gap-4">
+                {overrideSent ? (
+                  /* Success state */
+                  <div className="flex flex-col items-center gap-3 py-4 text-center">
+                    <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
+                      <MessageCircleMore className="w-6 h-6 text-emerald-500" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-800 text-sm">Mensaje enviado</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Tu mensaje fue enviado directamente, sin pasar por el bot.</p>
+                    </div>
+                    <button
+                      onClick={() => setOverrideUGC(null)}
+                      className="mt-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-700 transition-colors"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                ) : (
+                  /* Compose state */
+                  <>
+                    <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                      <p className="text-xs text-amber-700 font-medium">
+                        ⚡ Este mensaje bypasea al bot y se enviará <strong>directamente por WhatsApp</strong>.
+                        Usalo para casos urgentes o personalizados.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Mensaje</label>
+                      <textarea
+                        value={overrideMsg}
+                        onChange={e => setOverrideMsg(e.target.value)}
+                        placeholder={`Hola ${overrideUGC.nombre.split(' ')[0]}, te contacto directamente para...`}
+                        rows={4}
+                        autoFocus
+                        className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-300 transition-all resize-none"
+                      />
+                      <p className="text-[10px] text-slate-300 font-mono text-right">{overrideMsg.length} chars</p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (!overrideMsg.trim()) return;
+                          setOverrideSent(true);
+                        }}
+                        disabled={!overrideMsg.trim()}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Send className="w-4 h-4" />
+                        Enviar ahora
+                      </button>
+                      <button
+                        onClick={() => setOverrideUGC(null)}
+                        className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-colors text-sm"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Lanzar Modal */}

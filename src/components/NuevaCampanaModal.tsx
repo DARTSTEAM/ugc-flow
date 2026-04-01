@@ -7,7 +7,7 @@ interface Props {
   onCrear: (campana: Campana) => void;
 }
 
-const MARCAS = ['Popeyes', 'Burger King', 'KFC', 'McDonald\'s', 'Wendy\'s', 'Otra'];
+const MARCAS = ['Popeyes', 'Dunkin', 'Papa Johns', 'Bembos', 'Chinawok'];
 
 export default function NuevaCampanaModal({ onClose, onCrear }: Props) {
   const [nombre, setNombre] = useState('');

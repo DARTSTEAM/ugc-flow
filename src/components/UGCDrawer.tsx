@@ -1,6 +1,8 @@
-import { X, MessageCircle, TrendingUp, Award, ChevronRight, Send } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, MessageCircle, TrendingUp, Award, ChevronRight, Send, Loader2 } from 'lucide-react';
 import type { UGC, Campana } from '../data';
 import { scoreColor, ESTADO_UGC_CONFIG, getInitials, avatarColor } from '../utils';
+import { fetchCreatorDetail } from '../api';
 
 interface Props {
   ugc: UGC;
@@ -11,11 +13,32 @@ interface Props {
   onAsignar: (ugc: UGC, campanaId: string) => void;
 }
 
-export default function UGCDrawer({ ugc, campanas, onClose, onAvanzar, onDescartar, onAsignar }: Props) {
+export default function UGCDrawer({ ugc: ugcProp, campanas, onClose, onAvanzar, onDescartar, onAsignar }: Props) {
+  const [ugc, setUgc] = useState<UGC>(ugcProp);
+  const [loadingDetail, setLoadingDetail] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDetail() {
+      try {
+        setLoadingDetail(true);
+        const detail = await fetchCreatorDetail(ugcProp.id);
+        if (!cancelled) setUgc({ ...ugcProp, ...detail });
+      } catch (err) {
+        console.error('Failed to load creator detail:', err);
+        if (!cancelled) setUgc(ugcProp);
+      } finally {
+        if (!cancelled) setLoadingDetail(false);
+      }
+    }
+    loadDetail();
+    return () => { cancelled = true; };
+  }, [ugcProp.id]);
+
   const av = avatarColor(ugc.id);
   const sc = scoreColor(ugc.score);
   const estadoConfig = ESTADO_UGC_CONFIG[ugc.estado];
-  const totalScore = ugc.scoreBreakdown.reduce((a, b) => a + b.puntos, 0);
+  const totalScore = (ugc.scoreBreakdown || []).reduce((a, b) => a + b.puntos, 0);
 
   return (
     <>
@@ -77,6 +100,13 @@ export default function UGCDrawer({ ugc, campanas, onClose, onAvanzar, onDescart
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
           
+          {loadingDetail ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+              <span className="ml-2 text-sm text-slate-400">Cargando detalle...</span>
+            </div>
+          ) : (
+          <>
           {/* Score Breakdown */}
           <div className="px-6 py-4 border-b border-slate-50">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5">
@@ -148,6 +178,9 @@ export default function UGCDrawer({ ugc, campanas, onClose, onAvanzar, onDescart
               </div>
             )}
           </div>
+
+          </>
+          )}
 
           {/* Assign to campaign */}
           {ugc.estado !== 'Descartado' && (

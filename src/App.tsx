@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Users, Megaphone, Settings, Bell, ChevronRight } from 'lucide-react';
-import { UGCS_MOCK, CAMPANAS_MOCK } from './data';
+import { useState, useEffect } from 'react';
+import { Users, Megaphone, Settings, Bell, ChevronRight, Loader2 } from 'lucide-react';
+import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign } from './api';
 import type { UGC, Campana } from './data';
 import UGCsTab from './components/UGCsTab';
 import CampanasTab from './components/CampanasTab';
@@ -17,40 +17,82 @@ const NAV_ITEMS = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('ugcs');
-  const [ugcs, setUGCs] = useState<UGC[]>(UGCS_MOCK);
-  const [campanas, setCampanas] = useState<Campana[]>(CAMPANAS_MOCK);
+  const [ugcs, setUGCs] = useState<UGC[]>([]);
+  const [campanas, setCampanas] = useState<Campana[]>([]);
   const [selectedCampana, setSelectedCampana] = useState<Campana | null>(null);
   const [showNuevaCampana, setShowNuevaCampana] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // UGC handlers
-  function handleUpdateUGC(ugc: UGC) {
-    setUGCs(prev => {
-      const idx = prev.findIndex(u => u.id === ugc.id);
-      if (idx === -1) return [...prev, ugc];
-      const next = [...prev];
-      next[idx] = ugc;
-      return next;
-    });
+  // ── Load data from API on mount ──────────────────────────────────
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
+        const [creatorsData, campaignsData] = await Promise.all([
+          fetchCreators(),
+          fetchCampaigns(),
+        ]);
+        setUGCs(creatorsData);
+        setCampanas(campaignsData);
+      } catch (err) {
+        console.error('Failed to load data:', err);
+        setError(err instanceof Error ? err.message : 'Error al cargar datos');
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  // ── UGC handlers (now with API calls) ────────────────────────────
+  async function handleUpdateUGC(ugc: UGC) {
+    try {
+      await updateCreator(ugc);
+      setUGCs(prev => {
+        const idx = prev.findIndex(u => u.id === ugc.id);
+        if (idx === -1) return [...prev, ugc];
+        const next = [...prev];
+        next[idx] = ugc;
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to update UGC:', err);
+    }
   }
 
-  function handleDeleteUGC(id: string) {
-    setUGCs(prev => prev.filter(u => u.id !== id));
+  async function handleDeleteUGC(id: string) {
+    try {
+      await deleteCreator(id);
+      setUGCs(prev => prev.filter(u => u.id !== id));
+    } catch (err) {
+      console.error('Failed to delete UGC:', err);
+    }
   }
 
-  // Campaign handlers
-  function handleTogglePause(campana: Campana) {
-    const updated = {
-      ...campana,
-      estado: campana.estado === 'Pausada' ? 'Activa' : 'Pausada'
-    } as Campana;
-    setCampanas(prev => prev.map(c => c.id === campana.id ? updated : c));
-    if (selectedCampana?.id === campana.id) setSelectedCampana(updated);
+  // ── Campaign handlers (now with API calls) ───────────────────────
+  async function handleTogglePause(campana: Campana) {
+    const newEstado = campana.estado === 'Pausada' ? 'Activa' : 'Pausada';
+    try {
+      await updateCampaignStatus(campana.id, newEstado);
+      const updated = { ...campana, estado: newEstado } as Campana;
+      setCampanas(prev => prev.map(c => c.id === campana.id ? updated : c));
+      if (selectedCampana?.id === campana.id) setSelectedCampana(updated);
+    } catch (err) {
+      console.error('Failed to toggle pause:', err);
+    }
   }
 
-  function handleLanzar(campana: Campana) {
-    const updated = { ...campana, estado: 'Activa' } as Campana;
-    setCampanas(prev => prev.map(c => c.id === campana.id ? updated : c));
-    if (selectedCampana?.id === campana.id) setSelectedCampana(updated);
+  async function handleLanzar(campana: Campana) {
+    try {
+      await updateCampaignStatus(campana.id, 'Activa');
+      const updated = { ...campana, estado: 'Activa' } as Campana;
+      setCampanas(prev => prev.map(c => c.id === campana.id ? updated : c));
+      if (selectedCampana?.id === campana.id) setSelectedCampana(updated);
+    } catch (err) {
+      console.error('Failed to launch campaign:', err);
+    }
   }
 
   function handleSelectCampana(c: Campana) {
@@ -58,15 +100,46 @@ export default function App() {
     setActiveTab('campanas');
   }
 
-  function handleCrearCampana(nueva: Campana) {
-    setCampanas(prev => [...prev, nueva]);
-    setShowNuevaCampana(false);
-    setSelectedCampana(nueva);
-    setActiveTab('campanas');
+  async function handleCrearCampana(nueva: Campana) {
+    try {
+      await createCampaign(nueva);
+      setCampanas(prev => [...prev, nueva]);
+      setShowNuevaCampana(false);
+      setSelectedCampana(nueva);
+      setActiveTab('campanas');
+    } catch (err) {
+      console.error('Failed to create campaign:', err);
+    }
   }
 
   const calificados = ugcs.filter(u => u.estado === 'Calificado').length;
   const activas = campanas.filter(c => c.estado === 'Activa').length;
+
+  // ── Loading state ────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+          <p className="text-sm text-slate-500 font-medium">Cargando datos desde BigQuery...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+        <div className="bg-white rounded-2xl shadow-sm border border-rose-100 p-8 max-w-md text-center">
+          <p className="text-sm font-semibold text-rose-600 mb-2">Error al conectar</p>
+          <p className="text-xs text-slate-500 mb-4">{error}</p>
+          <button onClick={() => window.location.reload()} className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition-colors">
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>

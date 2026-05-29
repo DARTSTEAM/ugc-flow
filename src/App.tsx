@@ -307,6 +307,7 @@ export default function App() {
         <NuevaCampanaModal
           onClose={() => setShowNuevaCampana(false)}
           onCrear={handleCrearCampana}
+          ugcs={ugcs}
         />
       )}
     </div>

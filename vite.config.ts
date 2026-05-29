@@ -11,7 +11,9 @@ function apiServer(): Plugin {
     name: 'api-server',
     configureServer(server) {
       // Dynamic import so the module is resolved at runtime, not build-time
-      return import('./server/index.js').then(({ app }) => {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore – server/index.js has no type declarations (JS-only module)
+      return import('./server/index.js').then(({ app }: { app: import('express').Application }) => {
         server.middlewares.use(app)
       })
     },

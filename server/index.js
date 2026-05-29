@@ -24,14 +24,13 @@ app.get('/api/creators', async (req, res) => {
       SELECT creator_id, full_name, username, platform, canal, estado, score,
              ultima_actividad, campana_asignada, seguidores_display, bio, brand_id
       FROM ${DATASET}.creators
-      WHERE creator_id LIKE 'ugc-%'
-      ORDER BY score DESC
+      ORDER BY score DESC NULLS LAST, full_name ASC
     `);
 
     const result = creators.map(c => ({
       id: c.creator_id,
-      nombre: c.full_name,
-      canal: c.canal || 'Instagram',
+      nombre: c.full_name || c.username || c.creator_id,
+      canal: c.canal || c.platform || 'TikTok',
       estado: c.estado || 'Nuevo',
       score: c.score || 0,
       ultimaActividad: c.ultima_actividad || '',
@@ -143,8 +142,7 @@ app.get('/api/campaigns', async (req, res) => {
       q(`SELECT c.*, b.name as brand_name
          FROM ${DATASET}.campaigns c
          LEFT JOIN ${DATASET}.brands b ON c.brand_id = b.brand_id
-         WHERE c.campaign_id LIKE 'camp-%'
-         ORDER BY c.start_date DESC`),
+         ORDER BY c.start_date DESC NULLS LAST`),  
       q(`SELECT * FROM ${DATASET}.campaign_creators ORDER BY fecha_envio`),
     ]);
 

@@ -210,5 +210,12 @@ app.post('/api/campaigns', async (req, res) => {
   }
 });
 
-const PORT = 3001;
-app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT}`));
+// Export the app for use as Vite middleware
+export { app };
+
+// Standalone mode: only listen when run directly (node server/index.js)
+const isMain = import.meta.url === `file:///${process.argv[1].replace(/\\/g, '/')}`;
+if (isMain) {
+  const PORT = 3001;
+  app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT}`));
+}

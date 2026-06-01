@@ -27,18 +27,21 @@ function KPICard({
   icon, label, value, note, trend
 }: { icon: React.ReactNode; label: string; value: number | string; note?: string; trend?: 'up' | 'down' }) {
   return (
-    <div className="flex-1 min-w-[130px] p-4 bg-white border border-slate-100 rounded-xl shadow-sm">
+    <div
+      className="flex-1 min-w-[130px] p-4 border rounded-xl"
+      style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}
+    >
       <div className="flex items-start justify-between mb-2">
-        <span className="text-slate-300">{icon}</span>
+        <span style={{ color: 'var(--color-text-3)' }}>{icon}</span>
         {trend && (
           <span className={trend === 'up' ? 'text-emerald-500' : 'text-rose-400'}>
             {trend === 'up' ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
           </span>
         )}
       </div>
-      <p className="text-2xl font-black text-slate-900 font-mono">{value}</p>
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">{label}</p>
-      {note && <p className="text-[10px] text-slate-300 mt-0.5 font-mono">{note}</p>}
+      <p className="text-2xl font-black font-mono" style={{ color: 'var(--color-text-1)' }}>{value}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'var(--color-text-3)' }}>{label}</p>
+      {note && <p className="text-[10px] font-mono mt-0.5" style={{ color: 'var(--color-text-3)' }}>{note}</p>}
     </div>
   );
 }
@@ -54,7 +57,6 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
 
   const estadoCfg = ESTADO_CAMPANA_CONFIG[campana.estado];
 
-  // Compute stats
   const enviados = campana.ugcs.filter(u => u.estado !== 'No aplica').length;
   const respondidos = campana.ugcs.filter(u => ['Respondió', 'Calificado'].includes(u.estado)).length;
   const pendientes = campana.ugcs.filter(u => u.estado === 'Pendiente' || u.estado === 'Enviado').length;
@@ -70,7 +72,6 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
     return sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
   }
 
-  // Build UGC rows
   const rows = campana.ugcs
     .filter(uc => !filterEstado || uc.estado === filterEstado)
     .map(uc => {
@@ -89,7 +90,6 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       return sortDir === 'asc' ? cmp : -cmp;
     });
 
-  // Ranking: top calificados by score
   const ranking = campana.ugcs
     .filter(uc => uc.estado === 'Calificado')
     .map(uc => ugcs.find(u => u.id === uc.ugcId))
@@ -103,24 +103,30 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
         <div className="flex items-start gap-3">
           <button
             onClick={onBack}
-            className="mt-0.5 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0"
+            className="mt-0.5 w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 flex-shrink-0"
+            style={{ color: 'var(--color-text-3)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-xl font-black text-slate-900">{campana.nombre}</h2>
+              <h2 className="text-xl font-black" style={{ color: 'var(--color-text-1)' }}>{campana.nombre}</h2>
               <span className={`px-2.5 py-0.5 rounded-md text-xs font-semibold ${estadoCfg.className}`}>{estadoCfg.label}</span>
             </div>
-            <p className="text-sm text-slate-400">{campana.descripcion}</p>
-            <p className="text-xs text-slate-300 font-mono mt-1">{campana.fechaInicio} → {campana.fechaFin}</p>
+            <p className="text-sm" style={{ color: 'var(--color-text-3)' }}>{campana.descripcion}</p>
+            <p className="text-xs font-mono mt-1" style={{ color: 'var(--color-text-3)' }}>{campana.fechaInicio} → {campana.fechaFin}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {campana.estado !== 'Cerrada' && campana.estado !== 'Borrador' && (
             <button
               onClick={() => onTogglePause(campana)}
-              className="flex items-center gap-2 px-3 py-2 border border-slate-200 bg-white text-slate-600 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors"
+              className="flex items-center gap-2 px-3 py-2 border rounded-xl text-sm font-semibold transition-all duration-200"
+              style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-2)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
             >
               {campana.estado === 'Pausada' ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
               {campana.estado === 'Pausada' ? 'Reanudar' : 'Pausar'}
@@ -129,7 +135,10 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
           {campana.estado !== 'Cerrada' && (
             <button
               onClick={() => setShowLanzarModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200"
+              className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 active:scale-[0.97]"
+              style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
             >
               <Rocket className="w-3.5 h-3.5" />
               Lanzar envío
@@ -139,18 +148,18 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       </div>
 
       {/* Progress */}
-      <div className="p-4 bg-white border border-slate-100 rounded-xl shadow-sm">
+      <div className="p-4 border rounded-xl" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold text-slate-500">Progreso de campaña</span>
-          <span className="text-xs font-mono font-bold text-slate-700">{enviados}/{campana.objetivo} UGCs</span>
+          <span className="text-xs font-bold" style={{ color: 'var(--color-text-2)' }}>Progreso de campaña</span>
+          <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-1)' }}>{enviados}/{campana.objetivo} UGCs</span>
         </div>
-        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
           <div
-            className="h-full bg-indigo-500 rounded-full transition-all duration-700"
-            style={{ width: `${Math.min(progreso, 100)}%` }}
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${Math.min(progreso, 100)}%`, backgroundColor: 'var(--color-brand)' }}
           />
         </div>
-        <p className="text-[10px] text-slate-400 font-mono mt-1">{progreso}% completado</p>
+        <p className="text-[10px] font-mono mt-1" style={{ color: 'var(--color-text-3)' }}>{progreso}% completado</p>
       </div>
 
       {/* KPI Strip */}
@@ -166,13 +175,17 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       </div>
 
       {/* UGC Table */}
-      <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm flex flex-col flex-1">
-        <div className="px-4 pt-3 pb-2 border-b border-slate-50 flex items-center justify-between gap-3">
-          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Creadores en esta campaña</h3>
+      <div className="border rounded-2xl overflow-hidden flex flex-col flex-1"
+        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+        <div className="px-4 pt-3 pb-2 border-b flex items-center justify-between gap-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+          <h3 className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-3)' }}>Creadores en esta campaña</h3>
           <select
             value={filterEstado}
             onChange={e => setFilterEstado(e.target.value as EstadoEnCampana | '')}
-            className="px-3 py-1.5 border border-slate-200 rounded-lg text-xs bg-white text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+            className="px-3 py-1.5 border rounded-xl text-xs focus:outline-none transition-all duration-200"
+            style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-2)' }}
+            onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)'; }}
+            onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
           >
             <option value="">Todos los estados</option>
             {ESTADOS_EN.map(e => <option key={e} value={e}>{e}</option>)}
@@ -180,7 +193,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
         </div>
         <div className="overflow-auto flex-1">
           <table className="w-full text-left border-separate border-spacing-0 min-w-[600px]">
-            <thead className="sticky top-0 bg-white z-10">
+            <thead className="sticky top-0 z-10" style={{ backgroundColor: 'var(--color-surface)' }}>
               <tr>
                 {[
                   { key: 'nombre', label: 'Creador' },
@@ -189,57 +202,62 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                   { key: 'fechaEnvio', label: 'Fecha envío' },
                 ].map(col => (
                   <th key={col.key} onClick={() => handleSort(col.key as SortKey2)}
-                    className="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] border-b border-slate-100 cursor-pointer hover:text-slate-700 transition-colors select-none whitespace-nowrap">
+                    className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b cursor-pointer select-none whitespace-nowrap transition-colors duration-200"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'}
+                  >
                     <div className="flex items-center gap-1">{col.label}<SortIcon col={col.key as SortKey2} /></div>
                   </th>
                 ))}
-                <th className="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] border-b border-slate-100">Fecha respuesta</th>
-                <th className="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] border-b border-slate-100">Acciones</th>
+                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}>Fecha respuesta</th>
+                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={6} className="py-10 text-center text-slate-300 text-sm italic">No hay creadores con este filtro</td></tr>
+                <tr><td colSpan={6} className="py-10 text-center text-sm italic" style={{ color: 'var(--color-text-3)' }}>No hay creadores con este filtro</td></tr>
               ) : rows.map(({ uc, ugc }) => {
                 const sc = scoreColor(ugc!.score);
                 const estadoCfg = ESTADO_EN_CAMPANA_CONFIG[uc.estado];
                 const av = avatarColor(ugc!.id);
                 return (
-                  <tr key={uc.ugcId} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="py-3 px-4 border-b border-slate-50">
+                  <tr key={uc.ugcId} className="transition-colors duration-150"
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+                  >
+                    <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
                       <div className="flex items-center gap-2">
                         <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold ${av}`}>
                           {getInitials(ugc!.nombre)}
                         </div>
-                        <span className="text-sm font-semibold text-slate-800">{ugc!.nombre}</span>
+                        <span className="text-sm font-semibold" style={{ color: 'var(--color-text-1)' }}>{ugc!.nombre}</span>
                       </div>
                     </td>
-                    <td className="py-3 px-4 border-b border-slate-50">
+                    <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
                       <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${estadoCfg.className}`}>{estadoCfg.label}</span>
                     </td>
-                    <td className="py-3 px-4 border-b border-slate-50">
+                    <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
                       <div className="flex items-center gap-2">
-                        <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
                           <div className={`h-full ${sc.bar} rounded-full`} style={{ width: `${ugc!.score}%` }} />
                         </div>
                         <span className={`text-xs font-mono font-bold ${sc.text}`}>{ugc!.score}</span>
                       </div>
                     </td>
-                    <td className="py-3 px-4 border-b border-slate-50 text-xs font-mono text-slate-400">{uc.fechaEnvio}</td>
-                    <td className="py-3 px-4 border-b border-slate-50 text-xs font-mono text-slate-400">
-                      {uc.fechaRespuesta ?? <span className="text-slate-200">—</span>}
+                    <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-3)' }}>{uc.fechaEnvio}</td>
+                    <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-3)' }}>
+                      {uc.fechaRespuesta ?? <span style={{ color: 'var(--color-border)' }}>—</span>}
                     </td>
-                    <td className="py-3 px-4 border-b border-slate-50">
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => { setOverrideUGC(ugc!); setOverrideMsg(''); setOverrideSent(false); }}
-                          title="Override bot — contactar directamente"
-                          className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors whitespace-nowrap"
-                        >
-                          <Zap className="w-3 h-3" />
-                          Override
-                        </button>
-                      </div>
+                    <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                      <button
+                        onClick={() => { setOverrideUGC(ugc!); setOverrideMsg(''); setOverrideSent(false); }}
+                        title="Override bot — contactar directamente"
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors duration-200 whitespace-nowrap"
+                      >
+                        <Zap className="w-3 h-3" />
+                        Override
+                      </button>
                     </td>
                   </tr>
                 );
@@ -251,8 +269,8 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
 
       {/* Ranking panel */}
       {ranking.length > 0 && (
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
-          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5">
+        <div className="border rounded-2xl p-4" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-3)' }}>
             <Award className="w-3.5 h-3.5 text-amber-400" />
             Ranking de candidatos
           </h3>
@@ -261,19 +279,27 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
               const sc = scoreColor(ugc.score);
               const av = avatarColor(ugc.id);
               return (
-                <div key={ugc.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 transition-colors">
-                  <span className="text-xs font-black text-slate-300 font-mono w-4 text-center">#{i + 1}</span>
+                <div key={ugc.id} className="flex items-center gap-3 p-2.5 rounded-xl transition-colors duration-150"
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+                >
+                  <span className="text-xs font-black font-mono w-4 text-center" style={{ color: 'var(--color-text-3)' }}>#{i + 1}</span>
                   <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold ${av}`}>
                     {getInitials(ugc.nombre)}
                   </div>
-                  <span className="flex-1 text-sm font-semibold text-slate-800">{ugc.nombre}</span>
+                  <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--color-text-1)' }}>{ugc.nombre}</span>
                   <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
                       <div className={`h-full ${sc.bar} rounded-full`} style={{ width: `${ugc.score}%` }} />
                     </div>
                     <span className={`text-xs font-mono font-bold ${sc.text} w-6`}>{ugc.score}</span>
                   </div>
-                  <button className="px-3 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors whitespace-nowrap">
+                  <button
+                    className="px-3 py-1 text-xs font-semibold rounded-xl transition-all duration-200"
+                    style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', border: '1px solid var(--color-brand-border)' }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#ffe8b5'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-light)'}
+                  >
                     Seleccionar
                   </button>
                 </div>
@@ -286,45 +312,49 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       {/* Override Bot Modal */}
       {overrideUGC && (
         <>
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-50 overlay-enter" onClick={() => setOverrideUGC(null)} />
+          <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-50 overlay-enter" onClick={() => setOverrideUGC(null)} />
           <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto modal-enter">
-              {/* Header */}
-              <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between">
+            <div className="rounded-2xl w-full max-w-md pointer-events-auto modal-enter border"
+              style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}>
+              <div className="px-6 pt-5 pb-4 border-b flex items-start justify-between" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
                     <Zap className="w-5 h-5 text-amber-500" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-slate-900">Override del bot</h3>
-                    <p className="text-xs text-slate-400">Contacto directo a <span className="font-semibold text-slate-600">{overrideUGC.nombre}</span></p>
+                    <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Override del bot</h3>
+                    <p className="text-xs" style={{ color: 'var(--color-text-3)' }}>Contacto directo a <span className="font-semibold" style={{ color: 'var(--color-text-2)' }}>{overrideUGC.nombre}</span></p>
                   </div>
                 </div>
-                <button onClick={() => setOverrideUGC(null)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
+                <button onClick={() => setOverrideUGC(null)} className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors duration-200"
+                  style={{ color: 'var(--color-text-3)' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}>
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="px-6 py-4 flex flex-col gap-4">
                 {overrideSent ? (
-                  /* Success state */
                   <div className="flex flex-col items-center gap-3 py-4 text-center">
                     <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
                       <MessageCircleMore className="w-6 h-6 text-emerald-500" />
                     </div>
                     <div>
-                      <p className="font-bold text-slate-800 text-sm">Mensaje enviado</p>
-                      <p className="text-xs text-slate-400 mt-0.5">Tu mensaje fue enviado directamente, sin pasar por el bot.</p>
+                      <p className="font-bold text-sm" style={{ color: 'var(--color-text-1)' }}>Mensaje enviado</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>Tu mensaje fue enviado directamente, sin pasar por el bot.</p>
                     </div>
                     <button
                       onClick={() => setOverrideUGC(null)}
-                      className="mt-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-700 transition-colors"
+                      className="mt-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200"
+                      style={{ backgroundColor: 'var(--color-text-1)' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
                     >
                       Cerrar
                     </button>
                   </div>
                 ) : (
-                  /* Compose state */
                   <>
                     <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
                       <p className="text-xs text-amber-700 font-medium">
@@ -334,33 +364,36 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Mensaje</label>
+                      <label className="text-[10px] font-black uppercase tracking-wider" style={{ color: 'var(--color-text-3)' }}>Mensaje</label>
                       <textarea
                         value={overrideMsg}
                         onChange={e => setOverrideMsg(e.target.value)}
                         placeholder={`Hola ${overrideUGC.nombre.split(' ')[0]}, te contacto directamente para...`}
                         rows={4}
                         autoFocus
-                        className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-100 focus:border-amber-300 transition-all resize-none"
+                        className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200 resize-none"
+                        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
+                        onFocus={e => { e.currentTarget.style.borderColor = '#FBBF24'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(251,191,36,0.15)'; }}
+                        onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
                       />
-                      <p className="text-[10px] text-slate-300 font-mono text-right">{overrideMsg.length} chars</p>
+                      <p className="text-[10px] font-mono text-right" style={{ color: 'var(--color-text-3)' }}>{overrideMsg.length} chars</p>
                     </div>
 
                     <div className="flex gap-2">
                       <button
-                        onClick={() => {
-                          if (!overrideMsg.trim()) return;
-                          setOverrideSent(true);
-                        }}
+                        onClick={() => { if (!overrideMsg.trim()) return; setOverrideSent(true); }}
                         disabled={!overrideMsg.trim()}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors duration-200 text-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97]"
                       >
                         <Send className="w-4 h-4" />
                         Enviar ahora
                       </button>
                       <button
                         onClick={() => setOverrideUGC(null)}
-                        className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-colors text-sm"
+                        className="px-4 py-2.5 border rounded-xl font-semibold transition-all duration-200 text-sm"
+                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
                       >
                         Cancelar
                       </button>
@@ -376,28 +409,35 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       {/* Lanzar Modal */}
       {showLanzarModal && (
         <>
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-50 overlay-enter" onClick={() => setShowLanzarModal(false)} />
+          <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-50 overlay-enter" onClick={() => setShowLanzarModal(false)} />
           <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 pointer-events-auto modal-enter">
-              <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center mb-4">
-                <Rocket className="w-6 h-6 text-indigo-600" />
+            <div className="rounded-2xl p-6 max-w-sm w-full mx-4 pointer-events-auto modal-enter border"
+              style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: 'var(--color-brand-light)' }}>
+                <Rocket className="w-6 h-6" style={{ color: 'var(--color-brand)' }} />
               </div>
-              <h3 className="text-lg font-black text-slate-900 mb-1">Confirmar lanzamiento</h3>
-              <p className="text-sm text-slate-500 mb-5">
-                Estás por lanzar el envío de <span className="font-semibold text-slate-700">"{campana.nombre}"</span>. 
+              <h3 className="text-lg font-black mb-1" style={{ color: 'var(--color-text-1)' }}>Confirmar lanzamiento</h3>
+              <p className="text-sm mb-5" style={{ color: 'var(--color-text-2)' }}>
+                Estás por lanzar el envío de <span className="font-semibold" style={{ color: 'var(--color-text-1)' }}>"{campana.nombre}"</span>.
                 Se contactarán automáticamente todos los UGCs asignados.
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => { onLanzar(campana); setShowLanzarModal(false); }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors text-sm"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold transition-all duration-200 text-sm active:scale-[0.97]"
+                  style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
                 >
                   <Rocket className="w-4 h-4" />
                   Lanzar ahora
                 </button>
                 <button
                   onClick={() => setShowLanzarModal(false)}
-                  className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-colors text-sm"
+                  className="px-4 py-2.5 border rounded-xl font-semibold transition-all duration-200 text-sm"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
                 >
                   Cancelar
                 </button>

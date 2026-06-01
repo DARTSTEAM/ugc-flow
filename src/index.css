@@ -1,21 +1,57 @@
-@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
 
 @theme {
+  /* ── Fuentes ─────────────────────────────────────────────────────── */
   --font-sans: 'DM Sans', system-ui, sans-serif;
   --font-mono: 'DM Mono', monospace;
-  --color-bg: #F8F9FA;
-  --color-surface: #FFFFFF;
-  --color-border: #E5E7EB;
-  --color-border-subtle: #F3F4F6;
-  --color-text-primary: #0F172A;
-  --color-text-secondary: #64748B;
-  --color-text-muted: #94A3B8;
-  --color-indigo: #4F46E5;
-  --color-indigo-light: #EEF2FF;
+
+  /* ── Colores de Marca ─────────────────────────────────────────────── */
+  --color-brand:           #fc9a00;
+  --color-brand-hover:     #e08500;
+  --color-brand-light:     #fff7e6;
+  --color-brand-border:    #fcd580;
+  --color-brand-muted:     #f98631;
+  --color-danger:          #db3c3c;
+  --color-danger-hover:    #c02b2b;
+
+  /* ── Superficies Light (default) ─────────────────────────────────── */
+  --color-bg-app:          #F8F9FA;
+  --color-surface:         #FFFFFF;
+  --color-surface-alt:     #F8F9FA;
+  --color-border:          #E2E8F0;
+  --color-border-subtle:   #F1F5F9;
+  --color-text-1:          #0F172A;
+  --color-text-2:          #475569;
+  --color-text-3:          #94A3B8;
+
+  /* ── Shadows ─────────────────────────────────────────────────────── */
+  --shadow-card:           0 1px 8px -2px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+  --shadow-card-hover:     0 4px 20px -4px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.06);
+  --shadow-btn-brand:      0 4px 14px -3px rgba(252,154,0,0.30);
+  --shadow-drawer:         -8px 0 40px -8px rgba(0,0,0,0.15);
+  --shadow-modal:          0 20px 60px -10px rgba(0,0,0,0.25);
+}
+
+/* ── Dark mode overrides (class-based) ───────────────────────────── */
+.dark {
+  --color-bg-app:          #090A0F;
+  --color-surface:         #13151E;
+  --color-surface-alt:     #1A1D29;
+  --color-border:          #222635;
+  --color-border-subtle:   #1B1E2B;
+  --color-text-1:          #F8FAFC;
+  --color-text-2:          #94A3B8;
+  --color-text-3:          #475569;
+  --shadow-card:           0 1px 8px -2px rgba(0,0,0,0.40);
+  --shadow-card-hover:     0 4px 20px -4px rgba(0,0,0,0.50);
 }
 
 @layer base {
+  button, [role="button"], select, label[for], summary {
+    cursor: pointer;
+  }
+
   *, *::before, *::after {
     box-sizing: border-box;
   }
@@ -25,62 +61,174 @@
   }
 
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
-    font-family: 'DM Sans', system-ui, sans-serif;
+    background-color: var(--color-bg-app);
+    color: var(--color-text-1);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
-  ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: #E2E8F0;
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #CBD5E1; }
+
+  .dark ::-webkit-scrollbar-thumb { background: #2D3148; }
+  .dark ::-webkit-scrollbar-thumb:hover { background: #3D4266; }
+
+  /* ── Range input — modern style ─────────────────────────────────── */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
     border-radius: 99px;
+    background: var(--color-border);
+    outline: none;
+    border: none;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #CBD5E1;
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--color-brand);
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px var(--color-brand), 0 2px 6px rgba(252, 154, 0, 0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    margin-top: -7px; /* Center 18px thumb on 4px track */
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 1px var(--color-brand), 0 4px 12px rgba(252, 154, 0, 0.45);
+  }
+
+  input[type="range"]::-webkit-slider-thumb:active {
+    transform: scale(1.1);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--color-brand);
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px var(--color-brand), 0 2px 6px rgba(252, 154, 0, 0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  input[type="range"]::-moz-range-thumb:hover {
+    transform: scale(1.2);
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: 99px;
+    background: var(--color-border);
+  }
+
+  .dark input[type="range"]::-webkit-slider-thumb {
+    border-color: var(--color-surface);
+  }
+
+  .dark input[type="range"]::-moz-range-thumb {
+    border-color: var(--color-surface);
+  }
+
+  /* ── Dual range slider ───────────────────────────────────────────── */
+  input[type="range"].dual-range-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent !important;
+    pointer-events: none;
+    outline: none;
+    border: none;
+    box-shadow: none !important;
+  }
+
+  input[type="range"].dual-range-thumb::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--color-brand);
+    border: 2.5px solid #fff;
+    box-shadow: 0 0 0 1.5px var(--color-brand), 0 2px 8px rgba(252, 154, 0, 0.40);
+    pointer-events: all;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    margin-top: 0; /* Override standard range thumb centering margin */
+  }
+
+  input[type="range"].dual-range-thumb::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 0 1.5px var(--color-brand), 0 4px 14px rgba(252, 154, 0, 0.50);
+  }
+
+  input[type="range"].dual-range-thumb::-webkit-slider-thumb:active {
+    transform: scale(1.1);
+    cursor: grabbing;
+  }
+
+  input[type="range"].dual-range-thumb::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--color-brand);
+    border: 2.5px solid #fff;
+    box-shadow: 0 0 0 1.5px var(--color-brand), 0 2px 8px rgba(252, 154, 0, 0.40);
+    pointer-events: all;
+    transition: transform 0.15s ease;
+  }
+
+  input[type="range"].dual-range-thumb::-moz-range-track {
+    background: transparent !important;
+    border: none;
+    height: 100%; /* Match height of dual range container */
+  }
+
+  input[type="range"].dual-range-thumb::-webkit-slider-runnable-track {
+    -webkit-appearance: none;
+    background: transparent !important;
+    border: none;
+    height: 100%; /* Match height of dual range container */
+  }
+
+  .dark input[type="range"].dual-range-thumb::-webkit-slider-thumb,
+  .dark input[type="range"].dual-range-thumb::-moz-range-thumb {
+    border-color: var(--color-surface);
   }
 }
 
-/* Drawer animation */
+/* ── Animations ──────────────────────────────────────────────────── */
 @keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
 }
 
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.drawer-enter {
-  animation: slideInRight 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.overlay-enter {
-  animation: fadeIn 0.2s ease forwards;
+  to   { opacity: 1; }
 }
 
 @keyframes scaleUp {
-  from { 
-    transform: scale(0.95);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
+  from { transform: scale(0.96) translateY(4px); opacity: 0; }
+  to   { transform: scale(1)    translateY(0);   opacity: 1; }
 }
 
-.modal-enter {
-  animation: scaleUp 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+.drawer-enter  { animation: slideInRight 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.overlay-enter { animation: fadeIn 0.2s ease forwards; }
+.modal-enter   { animation: scaleUp 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+/* Respect user motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .drawer-enter, .overlay-enter, .modal-enter { animation: none; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
 }

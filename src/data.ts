@@ -36,6 +36,8 @@ export interface UGC {
   scoreBreakdown: ScoreBreakdown[];
   seguidores?: string;
   bio?: string;
+  unread?: boolean;
+  etiquetas?: string[];
 }
 
 export interface UGCEnCampana {

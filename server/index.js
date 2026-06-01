@@ -20,12 +20,30 @@ const STATUS_TO_EN = { Activa: 'active', Borrador: 'draft', Cerrada: 'completed'
 // ─── GET /api/creators ──────────────────────────────────────────────
 app.get('/api/creators', async (req, res) => {
   try {
-    const creators = await q(`
-      SELECT creator_id, full_name, username, platform, canal, estado, score,
-             ultima_actividad, campana_asignada, seguidores_display, bio, brand_id
-      FROM ${DATASET}.creators
-      ORDER BY score DESC NULLS LAST, full_name ASC
-    `);
+    const [creators, allMessages] = await Promise.all([
+      q(`
+        SELECT creator_id, full_name, username, platform, canal, estado, score,
+               ultima_actividad, campana_asignada, seguidores_display, bio, brand_id
+        FROM ${DATASET}.creators
+        ORDER BY score DESC NULLS LAST, full_name ASC
+      `),
+      q(`
+        SELECT creator_id, message_id, tipo, texto, fecha, orden
+        FROM ${DATASET}.messages
+        ORDER BY creator_id, orden
+      `)
+    ]);
+
+    const messagesMap = {};
+    allMessages.forEach(m => {
+      if (!messagesMap[m.creator_id]) messagesMap[m.creator_id] = [];
+      messagesMap[m.creator_id].push({
+        id: m.message_id,
+        tipo: m.tipo,
+        texto: m.texto,
+        fecha: m.fecha,
+      });
+    });
 
     const result = creators.map(c => ({
       id: c.creator_id,
@@ -37,7 +55,7 @@ app.get('/api/creators', async (req, res) => {
       campanasignada: c.campana_asignada || null,
       seguidores: c.seguidores_display || '',
       bio: c.bio || '',
-      conversacion: [],
+      conversacion: messagesMap[c.creator_id] || [],
       calificacion: [],
       scoreBreakdown: [],
     }));

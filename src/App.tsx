@@ -1,19 +1,41 @@
 import { useState, useEffect } from 'react';
-import { Users, Megaphone, Settings, Bell, ChevronRight, Loader2 } from 'lucide-react';
+import { Users, Megaphone, Bell, ChevronRight, Loader2, Sun, Moon, MessageSquare } from 'lucide-react';
 import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign } from './api';
 import type { UGC, Campana } from './data';
 import UGCsTab from './components/UGCsTab';
+import ChatsTab from './components/ChatsTab';
 import CampanasTab from './components/CampanasTab';
 import CampanaDetail from './components/CampanaDetail';
 import NuevaCampanaModal from './components/NuevaCampanaModal';
 import logoNgr from './assets/Logo-ngr.png';
 
-type TabId = 'ugcs' | 'campanas';
+type TabId = 'ugcs' | 'campanas' | 'chats';
 
 const NAV_ITEMS = [
   { id: 'ugcs' as TabId, label: 'UGCs', icon: Users },
   { id: 'campanas' as TabId, label: 'Campañas', icon: Megaphone },
+  { id: 'chats' as TabId, label: 'Chats', icon: MessageSquare },
 ];
+
+function useDarkMode() {
+  const [dark, setDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const stored = localStorage.getItem('ugcflow-theme');
+    return stored === 'dark';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (dark) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('ugcflow-theme', dark ? 'dark' : 'light');
+  }, [dark]);
+
+  return [dark, setDark] as const;
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('ugcs');
@@ -23,6 +45,7 @@ export default function App() {
   const [showNuevaCampana, setShowNuevaCampana] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dark, setDark] = useDarkMode();
 
   // ── Load data from API on mount ──────────────────────────────────
   useEffect(() => {
@@ -34,7 +57,26 @@ export default function App() {
           fetchCreators(),
           fetchCampaigns(),
         ]);
-        setUGCs(creatorsData);
+        
+        const creatorsWithChats = creatorsData.map((u: UGC, idx: number) => {
+          const lastMsg = u.conversacion?.[u.conversacion.length - 1];
+          const isUnread = lastMsg ? lastMsg.tipo === 'entrante' : false;
+          
+          let tags: string[] = [];
+          if (u.estado === 'Calificado') tags.push('Calificado');
+          if (u.score > 80) tags.push('Top');
+          
+          const extraTags = ['Moda', 'Foodie', 'Skincare', 'Rosario', 'Córdoba', 'Tech'];
+          tags.push(extraTags[idx % extraTags.length]);
+
+          return {
+            ...u,
+            unread: isUnread,
+            etiquetas: tags,
+          };
+        });
+        
+        setUGCs(creatorsWithChats);
         setCampanas(campaignsData);
       } catch (err) {
         console.error('Failed to load data:', err);
@@ -46,7 +88,7 @@ export default function App() {
     load();
   }, []);
 
-  // ── UGC handlers (now with API calls) ────────────────────────────
+  // ── UGC handlers ─────────────────────────────────────────────────
   async function handleUpdateUGC(ugc: UGC) {
     try {
       await updateCreator(ugc);
@@ -71,7 +113,7 @@ export default function App() {
     }
   }
 
-  // ── Campaign handlers (now with API calls) ───────────────────────
+  // ── Campaign handlers ─────────────────────────────────────────────
   async function handleTogglePause(campana: Campana) {
     const newEstado = campana.estado === 'Pausada' ? 'Activa' : 'Pausada';
     try {
@@ -118,10 +160,10 @@ export default function App() {
   // ── Loading state ────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-app)' }}>
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-          <p className="text-sm text-slate-500 font-medium">Cargando datos desde BigQuery...</p>
+          <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--color-brand)' }} />
+          <p className="text-sm font-medium" style={{ color: 'var(--color-text-2)' }}>Cargando datos desde BigQuery...</p>
         </div>
       </div>
     );
@@ -129,11 +171,15 @@ export default function App() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-        <div className="bg-white rounded-2xl shadow-sm border border-rose-100 p-8 max-w-md text-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+        <div className="rounded-2xl p-8 max-w-md text-center border" style={{ backgroundColor: 'var(--color-surface)', borderColor: '#fecdd3' }}>
           <p className="text-sm font-semibold text-rose-600 mb-2">Error al conectar</p>
-          <p className="text-xs text-slate-500 mb-4">{error}</p>
-          <button onClick={() => window.location.reload()} className="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition-colors">
+          <p className="text-xs mb-4" style={{ color: 'var(--color-text-2)' }}>{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 text-white text-xs font-semibold rounded-xl transition-all active:scale-[0.98]"
+            style={{ backgroundColor: 'var(--color-brand)' }}
+          >
             Reintentar
           </button>
         </div>
@@ -142,26 +188,30 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-      
-      {/* ── Sidebar ────────────────────────────────────────────────────── */}
-      <aside className="w-56 flex-shrink-0 bg-white border-r border-slate-100 flex flex-col">
+    <div className="h-screen w-screen flex overflow-hidden" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+
+      {/* ── Sidebar ─────────────────────────────────────────────────── */}
+      <aside
+        className="w-56 flex-shrink-0 flex flex-col border-r"
+        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}
+      >
         {/* Logo */}
-        <div className="px-5 py-5 border-b border-slate-50">
+        <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 bg-white rounded-xl border border-slate-100 shadow-sm flex items-center justify-center overflow-hidden p-1.5">
+            <div className="w-10 h-10 rounded-xl border flex items-center justify-center overflow-hidden p-1.5 shadow-sm"
+              style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
               <img src={logoNgr} alt="NGR" className="w-full h-auto object-contain" />
             </div>
             <div>
-              <p className="text-sm font-black text-slate-900 leading-none">UGC Flow</p>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">by NGR Digital</p>
+              <p className="text-sm font-black leading-none" style={{ color: 'var(--color-text-1)' }}>UGC Flow</p>
+              <p className="text-[10px] font-medium mt-0.5" style={{ color: 'var(--color-text-3)' }}>by NGR Digital</p>
             </div>
           </div>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 py-4 px-3">
-          <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] px-2 mb-2">Navegación</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.2em] px-2 mb-2" style={{ color: 'var(--color-text-3)' }}>Menú</p>
           {NAV_ITEMS.map(item => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -169,109 +219,142 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => { setActiveTab(item.id); setSelectedCampana(null); }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-0.5 text-sm font-semibold transition-all ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-0.5 text-sm font-semibold transition-all duration-200 active:scale-[0.98]"
+                style={isActive ? {
+                  backgroundColor: 'var(--color-brand)',
+                  color: '#fff',
+                  boxShadow: 'var(--shadow-btn-brand)',
+                } : {
+                  color: 'var(--color-text-2)',
+                }}
+                onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; }}
+                onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
                 {item.label}
-                {item.id === 'ugcs' && (
-                  <span className={`ml-auto text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                    {ugcs.length}
-                  </span>
-                )}
-                {item.id === 'campanas' && (
-                  <span className={`ml-auto text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                    {campanas.length}
-                  </span>
-                )}
+                <span
+                  className="ml-auto text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md"
+                  style={isActive
+                    ? { backgroundColor: 'rgba(255,255,255,0.25)', color: '#fff' }
+                    : item.id === 'chats' && ugcs.some(u => u.unread)
+                      ? { backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)' }
+                      : { backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-2)' }
+                  }
+                >
+                  {item.id === 'ugcs' && ugcs.length}
+                  {item.id === 'campanas' && campanas.length}
+                  {item.id === 'chats' && ugcs.filter(u => u.unread).length}
+                </span>
               </button>
             );
           })}
 
           {/* Quick stats */}
           <div className="mt-6 px-2">
-            <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] mb-3">Resumen</p>
-            <div className="space-y-2">
+            <p className="text-[9px] font-black uppercase tracking-[0.2em] mb-3" style={{ color: 'var(--color-text-3)' }}>Resumen</p>
+            <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400">Calificados</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>Calificados</span>
                 <span className="text-xs font-mono font-bold text-emerald-600">{calificados}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400">Campañas activas</span>
-                <span className="text-xs font-mono font-bold text-indigo-600">{activas}</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>Campañas activas</span>
+                <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-brand)' }}>{activas}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400">Total UGCs</span>
-                <span className="text-xs font-mono font-bold text-slate-600">{ugcs.length}</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>Total UGCs</span>
+                <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-2)' }}>{ugcs.length}</span>
               </div>
             </div>
           </div>
         </nav>
 
         {/* User at bottom */}
-        <div className="px-3 py-4 border-t border-slate-50">
-          <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors group">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-xs font-bold text-white">
+        <div className="px-3 py-4 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+          <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl cursor-pointer transition-colors duration-200 group"
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-muted) 100%)' }}>
               SA
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-slate-800 truncate">Santiago</p>
-              <p className="text-[10px] text-slate-400 truncate">Marketing</p>
+              <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text-1)' }}>Santiago</p>
+              <p className="text-[10px] truncate" style={{ color: 'var(--color-text-3)' }}>Marketing</p>
             </div>
-            <ChevronRight className="w-3 h-3 text-slate-300 group-hover:text-slate-500 transition-colors" />
+            <ChevronRight className="w-3 h-3 transition-colors duration-200" style={{ color: 'var(--color-text-3)' }} />
           </div>
         </div>
       </aside>
 
-      {/* ── Main area ──────────────────────────────────────────────────── */}
+      {/* ── Main area ──────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
-        
+
         {/* Top bar */}
-        <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between flex-shrink-0">
+        <header
+          className="border-b px-6 py-4 flex items-center justify-between flex-shrink-0"
+          style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}
+        >
           <div>
-            {/* Breadcrumb */}
             {selectedCampana ? (
               <div className="flex items-center gap-1.5 text-sm">
                 <button
                   onClick={() => setSelectedCampana(null)}
-                  className="font-medium text-slate-400 hover:text-indigo-600 transition-colors"
+                  className="font-medium transition-colors duration-200"
+                  style={{ color: 'var(--color-text-3)' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'}
                 >
                   Campañas
                 </button>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-                <span className="font-semibold text-slate-900 truncate max-w-xs">{selectedCampana.nombre}</span>
+                <ChevronRight className="w-3.5 h-3.5" style={{ color: 'var(--color-text-3)' }} />
+                <span className="font-semibold truncate max-w-xs" style={{ color: 'var(--color-text-1)' }}>
+                  {selectedCampana.nombre}
+                </span>
               </div>
             ) : (
               <div>
-                <h1 className="text-base font-black text-slate-900">
-                  {activeTab === 'ugcs' ? 'Base de Creadores UGC' : 'Gestión de Campañas'}
+                <h1 className="text-base font-black" style={{ color: 'var(--color-text-1)' }}>
+                  {activeTab === 'ugcs' && 'Base de Creadores UGC'}
+                  {activeTab === 'campanas' && 'Gestión de Campañas'}
+                  {activeTab === 'chats' && 'Centro de Mensajería'}
                 </h1>
-                <p className="text-xs text-slate-400">
-                  {activeTab === 'ugcs'
-                    ? `${ugcs.length} creadores registrados · ${calificados} calificados`
-                    : `${campanas.length} campañas · ${activas} activas`
-                  }
+                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>
+                  {activeTab === 'ugcs' && `${ugcs.length} creadores registrados · ${calificados} calificados`}
+                  {activeTab === 'campanas' && `${campanas.length} campañas · ${activas} activas`}
+                  {activeTab === 'chats' && `${ugcs.filter(u => u.unread).length} chats sin leer`}
                 </p>
               </div>
-            )}
+            ) }
           </div>
 
-          <div className="flex items-center gap-2">
-            <button className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-50 text-slate-400 hover:text-slate-700 transition-colors">
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+          <div className="flex items-center gap-1.5">
+            {/* Dark mode toggle */}
+            <button
+              onClick={() => setDark(d => !d)}
+              className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
+              style={{ color: 'var(--color-text-3)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+              title={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            >
+              {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-50 text-slate-400 hover:text-slate-700 transition-colors">
-              <Settings className="w-4 h-4" />
+            {/* Notifications */}
+            <button
+              className="relative w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200"
+              style={{ color: 'var(--color-text-3)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+            >
+              <Bell className="w-4 h-4" />
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-brand)' }} />
             </button>
           </div>
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className={`flex-1 ${activeTab === 'chats' ? 'p-0 overflow-hidden' : 'p-6 overflow-auto'}`}>
           {activeTab === 'ugcs' && (
             <UGCsTab
               ugcs={ugcs}
@@ -279,6 +362,12 @@ export default function App() {
               onAddUGC={() => {}}
               onUpdateUGC={handleUpdateUGC}
               onDeleteUGC={handleDeleteUGC}
+            />
+          )}
+          {activeTab === 'chats' && (
+            <ChatsTab
+              ugcs={ugcs}
+              onUpdateUGC={handleUpdateUGC}
             />
           )}
           {activeTab === 'campanas' && !selectedCampana && (

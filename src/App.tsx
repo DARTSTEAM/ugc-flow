@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Megaphone, Bell, ChevronRight, Loader2, Sun, Moon, MessageSquare } from 'lucide-react';
+import { Users, Megaphone, Bell, ChevronRight, Loader2, Sun, Moon, MessageSquare, ScanSearch } from 'lucide-react';
 import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign } from './api';
 import type { UGC, Campana } from './data';
 import UGCsTab from './components/UGCsTab';
@@ -7,14 +7,16 @@ import ChatsTab from './components/ChatsTab';
 import CampanasTab from './components/CampanasTab';
 import CampanaDetail from './components/CampanaDetail';
 import NuevaCampanaModal from './components/NuevaCampanaModal';
+import ProspeccionTab from './components/ProspeccionTab';
 import logoNgr from './assets/Logo-ngr.png';
 
-type TabId = 'ugcs' | 'campanas' | 'chats';
+type TabId = 'ugcs' | 'campanas' | 'chats' | 'prospeccion';
 
 const NAV_ITEMS = [
-  { id: 'ugcs' as TabId, label: 'UGCs', icon: Users },
-  { id: 'campanas' as TabId, label: 'Campañas', icon: Megaphone },
-  { id: 'chats' as TabId, label: 'Chats', icon: MessageSquare },
+  { id: 'ugcs' as TabId,        label: 'UGCs Activos', icon: Users },
+  { id: 'prospeccion' as TabId, label: 'Prospección',  icon: ScanSearch },
+  { id: 'campanas' as TabId,    label: 'Campañas',     icon: Megaphone },
+  { id: 'chats' as TabId,       label: 'Chats',        icon: MessageSquare },
 ];
 
 function useDarkMode() {
@@ -242,6 +244,7 @@ export default function App() {
                   }
                 >
                   {item.id === 'ugcs' && ugcs.length}
+                  {item.id === 'prospeccion' && 4}
                   {item.id === 'campanas' && campanas.length}
                   {item.id === 'chats' && ugcs.filter(u => u.unread).length}
                 </span>
@@ -315,12 +318,14 @@ export default function App() {
             ) : (
               <div>
                 <h1 className="text-base font-black" style={{ color: 'var(--color-text-1)' }}>
-                  {activeTab === 'ugcs' && 'Base de Creadores UGC'}
+                  {activeTab === 'ugcs' && 'UGCs Activos'}
+                  {activeTab === 'prospeccion' && 'Prospección de UGCs'}
                   {activeTab === 'campanas' && 'Gestión de Campañas'}
                   {activeTab === 'chats' && 'Centro de Mensajería'}
                 </h1>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>
                   {activeTab === 'ugcs' && `${ugcs.length} creadores registrados · ${calificados} calificados`}
+                  {activeTab === 'prospeccion' && '4 búsquedas · 1 en progreso · 109 creadores hallados'}
                   {activeTab === 'campanas' && `${campanas.length} campañas · ${activas} activas`}
                   {activeTab === 'chats' && `${ugcs.filter(u => u.unread).length} chats sin leer`}
                 </p>
@@ -354,7 +359,7 @@ export default function App() {
         </header>
 
         {/* Content */}
-        <main className={`flex-1 ${activeTab === 'chats' ? 'p-0 overflow-hidden' : 'p-6 overflow-auto'}`}>
+        <main className={`flex-1 ${activeTab === 'chats' ? 'p-0 overflow-hidden' : 'p-6 overflow-auto'}`} style={{ backgroundColor: 'var(--color-bg-app)' }}>
           {activeTab === 'ugcs' && (
             <UGCsTab
               ugcs={ugcs}
@@ -363,6 +368,9 @@ export default function App() {
               onUpdateUGC={handleUpdateUGC}
               onDeleteUGC={handleDeleteUGC}
             />
+          )}
+          {activeTab === 'prospeccion' && (
+            <ProspeccionTab />
           )}
           {activeTab === 'chats' && (
             <ChatsTab

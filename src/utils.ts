@@ -1,4 +1,4 @@
-import type { Canal, EstadoUGC, EstadoCampana, EstadoEnCampana } from './data';
+import type { Canal, EstadoUGC, EstadoCampana, EstadoEnCampana, UGC } from './data';
 
 // ─── Score helpers ──────────────────────────────────────────────────────────
 
@@ -59,4 +59,25 @@ export const AVATAR_COLORS = [
 export function avatarColor(id: string) {
   const idx = id.charCodeAt(id.length - 1) % AVATAR_COLORS.length;
   return AVATAR_COLORS[idx];
+}
+
+// ─── Evaluation helpers ─────────────────────────────────────────────────────
+
+/** Returns true if the UGC is missing organic content OR pauta evaluation */
+export function needsInfoUpdate(ugc: UGC): boolean {
+  return !ugc.evaluacionOrganica?.completado || !ugc.evaluacionPauta?.completado;
+}
+
+/** Formats an ISO timestamp as a human-readable date in Spanish */
+export function formatLastScraped(isoString: string | undefined): string {
+  if (!isoString) return 'Sin datos';
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return 'Hoy';
+  if (diffDays === 1) return 'Ayer';
+  if (diffDays < 7) return `Hace ${diffDays} días`;
+  if (diffDays < 30) return `Hace ${Math.floor(diffDays / 7)} semana${Math.floor(diffDays / 7) > 1 ? 's' : ''}`;
+  return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' });
 }

@@ -207,21 +207,106 @@ app.put('/api/campaigns/:id', async (req, res) => {
 // ─── POST /api/campaigns ────────────────────────────────────────────
 app.post('/api/campaigns', async (req, res) => {
   try {
-    const { id, nombre, marca, descripcion, fechaInicio, fechaFin, objetivo } = req.body;
+    const { id, nombre, marca, descripcion, fechaInicio, fechaFin, objetivo, mensajeContacto } = req.body;
     const brandId = marca?.toLowerCase().replace(/\s+/g, '') || 'popeyes';
     await q(`
-      INSERT INTO ${DATASET}.campaigns (campaign_id, brand_id, name, slug, start_date, end_date, status, description, created_at)
-      VALUES (@id, @brandId, @nombre, @slug, @startDate, @endDate, 'draft', @descripcion, CURRENT_TIMESTAMP())
+      INSERT INTO ${DATASET}.campaigns (campaign_id, brand_id, name, slug, start_date, end_date, status, description, mensaje_contacto, created_at)
+      VALUES (@id, @brandId, @nombre, @slug, @startDate, @endDate, 'draft', @descripcion, @mensajeContacto, CURRENT_TIMESTAMP())
     `, {
       id, brandId, nombre,
       slug: nombre.toLowerCase().replace(/\s+/g, '-'),
       startDate: fechaInicio || null,
       endDate: fechaFin || null,
       descripcion: descripcion || '',
+      mensajeContacto: mensajeContacto || '',
     });
     res.json({ ok: true });
   } catch (err) {
     console.error('POST /api/campaigns error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PATCH /api/campaigns/:id/mensaje ───────────────────────────────
+app.patch('/api/campaigns/:id/mensaje', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { mensajeContacto } = req.body;
+    await q(
+      `UPDATE ${DATASET}.campaigns SET mensaje_contacto = @mensajeContacto WHERE campaign_id = @id`,
+      { id, mensajeContacto: mensajeContacto || '' }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PATCH /api/campaigns/:id/mensaje error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/campaigns/:id/send-message ───────────────────────────
+// Placeholder — will trigger n8n/Evolution API in Sprint 2
+app.post('/api/campaigns/:id/send-message', (_req, res) => {
+  res.status(501).json({ error: 'Not implemented — Evolution API integration pending (Sprint 2)' });
+});
+
+// ─── PATCH /api/creators/:id/evaluacion-organica ────────────────────
+app.patch('/api/creators/:id/evaluacion-organica', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { views, shares, engagementRate, hookNatural, completado } = req.body;
+    await q(`
+      UPDATE ${DATASET}.creators SET
+        eval_organica_views           = @views,
+        eval_organica_shares          = @shares,
+        eval_organica_engagement_rate = @engagementRate,
+        eval_organica_hook_natural    = @hookNatural,
+        eval_organica_completado      = @completado,
+        updated_at                    = CURRENT_TIMESTAMP()
+      WHERE creator_id = @id
+    `, {
+      id,
+      views: views ?? null,
+      shares: shares ?? null,
+      engagementRate: engagementRate ?? null,
+      hookNatural: hookNatural ?? null,
+      completado: completado ?? false,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PATCH /api/creators/:id/evaluacion-organica error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PATCH /api/creators/:id/evaluacion-pauta ───────────────────────
+app.patch('/api/creators/:id/evaluacion-pauta', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { impresiones, alcance, cpm, frecuencia, ctr, vtr, completado } = req.body;
+    await q(`
+      UPDATE ${DATASET}.creators SET
+        eval_pauta_impresiones = @impresiones,
+        eval_pauta_alcance     = @alcance,
+        eval_pauta_cpm         = @cpm,
+        eval_pauta_frecuencia  = @frecuencia,
+        eval_pauta_ctr         = @ctr,
+        eval_pauta_vtr         = @vtr,
+        eval_pauta_completado  = @completado,
+        updated_at             = CURRENT_TIMESTAMP()
+      WHERE creator_id = @id
+    `, {
+      id,
+      impresiones: impresiones ?? null,
+      alcance: alcance ?? null,
+      cpm: cpm ?? null,
+      frecuencia: frecuencia ?? null,
+      ctr: ctr ?? null,
+      vtr: vtr ?? null,
+      completado: completado ?? false,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PATCH /api/creators/:id/evaluacion-pauta error:', err);
     res.status(500).json({ error: err.message });
   }
 });

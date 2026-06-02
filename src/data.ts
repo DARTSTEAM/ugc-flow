@@ -23,6 +23,40 @@ export interface RespuestaCalificacion {
   respuesta: string;
 }
 
+// ─── Evaluation interfaces ──────────────────────────────────────────────────
+
+/** Datos extraídos por Kernel al hacer scrape del perfil */
+export interface EvaluacionPerfil {
+  nombre: string;
+  perfil: string;                  // handle / @username
+  seguidores: number;
+  engagementRateCuenta: number;    // % ER de la cuenta
+  promedioVistaVideos: number;     // promedio de vistas de los últimos 5 videos
+  categoria: string;               // nicho / categoría
+  rangoEdadSeguidores: string;     // ej: "18-24", "25-34"
+  lastScrapedAt: string;           // ISO timestamp
+}
+
+/** Form manual — contenido orgánico. Cada campo pondera 25% del score orgánico */
+export interface EvaluacionOrganica {
+  views?: number;           // promedio de vistas (25%)
+  shares?: number;          // promedio de shares (25%)
+  engagementRate?: number;  // ER % (25%)
+  hookNatural?: number;     // puntuación 1–10 de hook natural (25%)
+  completado: boolean;
+}
+
+/** Form manual — KPIs de pauta */
+export interface EvaluacionPauta {
+  impresiones?: number;
+  alcance?: number;
+  cpm?: number;             // costo por 1000 impresiones
+  frecuencia?: number;      // frecuencia de exposición
+  ctr?: number;             // % click-through rate
+  vtr?: number;             // % view-through rate
+  completado: boolean;
+}
+
 export interface UGC {
   id: string;
   nombre: string;
@@ -38,6 +72,10 @@ export interface UGC {
   bio?: string;
   unread?: boolean;
   etiquetas?: string[];
+  phone?: string;                          // número WhatsApp del creador
+  evaluacionPerfil?: EvaluacionPerfil;     // datos de Kernel (solo lectura)
+  evaluacionOrganica?: EvaluacionOrganica; // form manual — contenido orgánico
+  evaluacionPauta?: EvaluacionPauta;       // form manual — KPIs de pauta
 }
 
 export interface UGCEnCampana {
@@ -57,7 +95,9 @@ export interface Campana {
   objetivo: number;
   ugcs: UGCEnCampana[];
   marca?: string;
+  mensajeContacto?: string;  // template de WhatsApp para outreach masivo
 }
+
 
 // ─── Mock Data ──────────────────────────────────────────────────────────────
 

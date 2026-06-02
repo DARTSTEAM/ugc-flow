@@ -2,13 +2,14 @@ import { useState } from 'react';
 import {
   ArrowLeft, Rocket, Pause, Play, TrendingUp, TrendingDown,
   BarChart3, Users, Mail, CheckCircle, ChevronDown, ChevronUp, ChevronsUpDown, Award,
-  MessageCircleMore, X, Send, Zap
+  MessageCircleMore, X, Send, Zap, MessageSquare
 } from 'lucide-react';
 import type { Campana, UGC, EstadoEnCampana } from '../data';
 import {
   scoreColor, ESTADO_EN_CAMPANA_CONFIG, ESTADO_CAMPANA_CONFIG,
   getInitials, avatarColor
 } from '../utils';
+import ConfirmarEnvioModal from './ConfirmarEnvioModal';
 
 interface Props {
   campana: Campana;
@@ -51,6 +52,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   const [sortKey, setSortKey] = useState<SortKey2>('score');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [showLanzarModal, setShowLanzarModal] = useState(false);
+  const [showEnvioModal, setShowEnvioModal] = useState(false);
   const [overrideUGC, setOverrideUGC] = useState<UGC | null>(null);
   const [overrideMsg, setOverrideMsg] = useState('');
   const [overrideSent, setOverrideSent] = useState(false);
@@ -174,7 +176,41 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
           note={respondidos > 0 ? `${Math.round((calificados / respondidos) * 100)}% de respondidos` : '—'} trend="up" />
       </div>
 
+      {/* Contactar creadores */}
+      <div className="border rounded-xl p-4" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(252,154,0,0.1)' }}>
+              <Send className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold" style={{ color: 'var(--color-text-1)' }}>Contactar creadores por WhatsApp</p>
+              {campana.mensajeContacto ? (
+                <p className="text-[11px] truncate mt-0.5" style={{ color: 'var(--color-text-3)' }}>
+                  {campana.mensajeContacto}
+                </p>
+              ) : (
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-3)' }}>
+                  Sin mensaje de contacto definido
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={() => setShowEnvioModal(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-white transition-all active:scale-[0.97] flex-shrink-0"
+            style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Enviar a creadores
+          </button>
+        </div>
+      </div>
+
       {/* UGC Table */}
+
       <div className="border rounded-2xl overflow-hidden flex flex-col flex-1"
         style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
         <div className="px-4 pt-3 pb-2 border-b flex items-center justify-between gap-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
@@ -307,6 +343,14 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
             })}
           </div>
         </div>
+      )}
+
+      {showEnvioModal && (
+        <ConfirmarEnvioModal
+          campana={campana}
+          ugcs={ugcs}
+          onClose={() => setShowEnvioModal(false)}
+        />
       )}
 
       {/* Override Bot Modal */}

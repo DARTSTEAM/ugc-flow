@@ -46,6 +46,7 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
   const [fechaFin, setFechaFin] = useState('');
   const [objetivo, setObjetivo] = useState(10);
   const [estado, setEstado] = useState<EstadoCampana>('Borrador');
+  const [mensajeContacto, setMensajeContacto] = useState('');
   const [error, setError] = useState('');
 
   // Step 2: UGC selection
@@ -134,6 +135,7 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
       objetivo,
       estado,
       ugcs: ugcEntries,
+      mensajeContacto: mensajeContacto.trim() || undefined,
     };
     onCrear(nueva);
   }
@@ -307,6 +309,21 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                   <div className="flex justify-between text-[9px] text-slate-300 font-mono">
                     <span>1</span><span>50</span>
                   </div>
+                </div>
+
+                {/* Mensaje de contacto */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] flex items-center gap-1">
+                    <MessageSquare className="w-3 h-3" /> Mensaje de contacto
+                  </label>
+                  <textarea
+                    value={mensajeContacto}
+                    onChange={e => setMensajeContacto(e.target.value)}
+                    placeholder={`Ej: ¡Hola! Te escribimos de NGR porque nos encanta tu contenido. Estamos buscando creadores para una campaña de ${marca}. ¿Tenés un momento para contarnos más?`}
+                    rows={3}
+                    className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all resize-none"
+                  />
+                  <p className="text-[10px] text-slate-400">Este mensaje se enviará por WhatsApp a los creadores seleccionados al iniciar la campaña.</p>
                 </div>
 
                 {error && (

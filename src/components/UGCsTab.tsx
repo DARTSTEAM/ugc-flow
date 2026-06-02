@@ -2,12 +2,12 @@ import { useState, useMemo, useEffect } from 'react';
 import {
   Search, Plus, ChevronDown, ChevronUp, ChevronsUpDown,
   Eye, MessageCircle, Trash2, SlidersHorizontal, X,
-  Filter, UserPlus, Instagram, Mail, MessageSquare
+  Filter, UserPlus, Instagram, Mail, MessageSquare, AlertTriangle
 } from 'lucide-react';
 import type { UGC, EstadoUGC, Canal, Campana } from '../data';
 import {
   scoreColor, ESTADO_UGC_CONFIG,
-  getInitials, avatarColor
+  getInitials, avatarColor, needsInfoUpdate
 } from '../utils';
 import UGCDrawer from './UGCDrawer';
 
@@ -769,7 +769,15 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${av}`}>
                           {getInitials(u.nombre)}
                         </div>
-                        <span className="font-semibold text-sm" style={{ color: 'var(--color-text-1)' }}>{u.nombre}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-semibold text-sm" style={{ color: 'var(--color-text-1)' }}>{u.nombre}</span>
+                          {needsInfoUpdate(u) && (
+                            <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: 'var(--color-brand)' }}>
+                              <AlertTriangle className="w-2.5 h-2.5" />
+                              Actualizar información
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="py-3.5 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
@@ -882,6 +890,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
           onAvanzar={handleAvanzar}
           onDescartar={handleDescartar}
           onAsignar={handleAsignar}
+          onUpdateUGC={onUpdateUGC}
         />
       )}
     </div>

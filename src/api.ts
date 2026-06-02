@@ -1,4 +1,4 @@
-import type { UGC, Campana } from './data';
+import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta } from './data';
 
 const BASE = '/api';
 
@@ -40,6 +40,26 @@ export async function deleteCreator(id: string): Promise<void> {
   await json(`/creators/${id}`, { method: 'DELETE' });
 }
 
+export async function updateEvaluacionOrganica(
+  id: string,
+  data: Omit<EvaluacionOrganica, 'completado'>
+): Promise<void> {
+  await json(`/creators/${id}/evaluacion-organica`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...data, completado: true }),
+  });
+}
+
+export async function updateEvaluacionPauta(
+  id: string,
+  data: Omit<EvaluacionPauta, 'completado'>
+): Promise<void> {
+  await json(`/creators/${id}/evaluacion-pauta`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...data, completado: true }),
+  });
+}
+
 // ─── Campaigns ──────────────────────────────────────────────────────
 
 export async function fetchCampaigns(): Promise<Campana[]> {
@@ -64,6 +84,19 @@ export async function createCampaign(campana: Campana): Promise<void> {
       fechaInicio: campana.fechaInicio,
       fechaFin: campana.fechaFin,
       objetivo: campana.objetivo,
+      mensajeContacto: campana.mensajeContacto,
     }),
   });
+}
+
+export async function updateCampaignMensaje(id: string, mensajeContacto: string): Promise<void> {
+  await json(`/campaigns/${id}/mensaje`, {
+    method: 'PATCH',
+    body: JSON.stringify({ mensajeContacto }),
+  });
+}
+
+/** Placeholder — will trigger n8n/Evolution API in Sprint 2 */
+export async function sendCampaignMessage(id: string): Promise<void> {
+  await json(`/campaigns/${id}/send-message`, { method: 'POST' });
 }

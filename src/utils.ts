@@ -3,40 +3,52 @@ import type { Canal, EstadoUGC, EstadoCampana, EstadoEnCampana, UGC } from './da
 // ─── Score helpers ──────────────────────────────────────────────────────────
 
 export function scoreColor(score: number) {
-  if (score >= 70) return { bar: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' };
-  if (score >= 40) return { bar: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50' };
-  return { bar: 'bg-rose-500', text: 'text-rose-700', bg: 'bg-rose-50' };
+  if (score >= 70) return {
+    bar: 'bg-emerald-500',
+    text: 'text-emerald-700 dark:text-emerald-300',
+    bg:  'bg-emerald-50 dark:bg-emerald-300/10',
+  };
+  if (score >= 40) return {
+    bar: 'bg-amber-400',
+    text: 'text-amber-700 dark:text-amber-300',
+    bg:  'bg-amber-50 dark:bg-amber-300/10',
+  };
+  return {
+    bar: 'bg-rose-500',
+    text: 'text-rose-700 dark:text-rose-300',
+    bg:  'bg-rose-50 dark:bg-rose-300/10',
+  };
 }
 
 // ─── Badge configs ──────────────────────────────────────────────────────────
 
 export const ESTADO_UGC_CONFIG: Record<EstadoUGC, { label: string; className: string }> = {
-  Nuevo:      { label: 'Nuevo',      className: 'bg-slate-100 text-slate-600 border border-slate-200' },
-  Contactado: { label: 'Contactado', className: 'bg-blue-50 text-blue-700 border border-blue-100' },
-  Respondió:  { label: 'Respondió',  className: 'bg-amber-50 text-amber-700 border border-amber-200' },
-  Calificado: { label: 'Calificado', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
-  Descartado: { label: 'Descartado', className: 'bg-rose-50 text-rose-700 border border-rose-200' },
+  Nuevo:      { label: 'Nuevo',      className: 'bg-slate-100 dark:bg-slate-300/10 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-300/20' },
+  Contactado: { label: 'Contactado', className: 'bg-blue-50 dark:bg-blue-300/10 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-300/20' },
+  Respondió:  { label: 'Respondió',  className: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-300/20' },
+  Calificado: { label: 'Calificado', className: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-300/20' },
+  Descartado: { label: 'Descartado', className: 'bg-rose-50 dark:bg-rose-300/10 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-300/20' },
 };
 
 export const CANAL_CONFIG: Record<Canal, { label: string; className: string; dot: string }> = {
-  WhatsApp:  { label: 'WhatsApp',  className: 'bg-green-50 text-green-700 border border-green-200',  dot: 'bg-green-500' },
-  Instagram: { label: 'Instagram', className: 'bg-purple-50 text-purple-700 border border-purple-200', dot: 'bg-purple-500' },
-  Email:     { label: 'Email',     className: 'bg-sky-50 text-sky-700 border border-sky-200',         dot: 'bg-sky-500' },
+  WhatsApp:  { label: 'WhatsApp',  className: 'bg-green-50 dark:bg-green-300/10 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-300/20',   dot: 'bg-green-500' },
+  Instagram: { label: 'Instagram', className: 'bg-purple-50 dark:bg-purple-300/10 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-300/20', dot: 'bg-purple-500' },
+  Email:     { label: 'Email',     className: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-300/20',                   dot: 'bg-sky-500' },
 };
 
 export const ESTADO_CAMPANA_CONFIG: Record<EstadoCampana, { label: string; className: string }> = {
-  Borrador: { label: 'Borrador', className: 'bg-slate-100 text-slate-600 border border-slate-200' },
-  Activa:   { label: 'Activa',   className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
-  Pausada:  { label: 'Pausada',  className: 'bg-amber-50 text-amber-700 border border-amber-200' },
-  Cerrada:  { label: 'Cerrada',  className: 'bg-slate-100 text-slate-500 border border-slate-200' },
+  Borrador: { label: 'Borrador', className: 'bg-slate-100 dark:bg-slate-300/10 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-300/20' },
+  Activa:   { label: 'Activa',   className: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-300/20' },
+  Pausada:  { label: 'Pausada',  className: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-300/20' },
+  Cerrada:  { label: 'Cerrada',  className: 'bg-slate-100 dark:bg-slate-300/8 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-300/15' },
 };
 
 export const ESTADO_EN_CAMPANA_CONFIG: Record<EstadoEnCampana, { label: string; className: string }> = {
-  Enviado:    { label: 'Enviado',    className: 'bg-blue-50 text-blue-700 border border-blue-100' },
-  Respondió:  { label: 'Respondió',  className: 'bg-amber-50 text-amber-700 border border-amber-200' },
-  Pendiente:  { label: 'Pendiente',  className: 'bg-slate-100 text-slate-500 border border-slate-200' },
-  Calificado: { label: 'Calificado', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
-  'No aplica':{ label: 'No aplica',  className: 'bg-rose-50 text-rose-600 border border-rose-100' },
+  Enviado:    { label: 'Enviado',    className: 'bg-blue-50 dark:bg-blue-300/10 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-300/20' },
+  Respondió:  { label: 'Respondió',  className: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-300/20' },
+  Pendiente:  { label: 'Pendiente',  className: 'bg-slate-100 dark:bg-slate-300/10 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-300/20' },
+  Calificado: { label: 'Calificado', className: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-300/20' },
+  'No aplica':{ label: 'No aplica',  className: 'bg-rose-50 dark:bg-rose-300/10 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-300/20' },
 };
 
 // ─── Avatar initials ────────────────────────────────────────────────────────
@@ -46,14 +58,14 @@ export function getInitials(name: string) {
 }
 
 export const AVATAR_COLORS = [
-  'bg-violet-100 text-violet-700',
-  'bg-sky-100 text-sky-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-amber-100 text-amber-700',
-  'bg-pink-100 text-pink-700',
-  'bg-indigo-100 text-indigo-700',
-  'bg-teal-100 text-teal-700',
-  'bg-rose-100 text-rose-700',
+  'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300',
+  'bg-sky-100 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300',
+  'bg-emerald-100 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300',
+  'bg-amber-100 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300',
+  'bg-pink-100 dark:bg-pink-300/10 text-pink-700 dark:text-pink-300',
+  'bg-indigo-100 dark:bg-indigo-300/10 text-indigo-700 dark:text-indigo-300',
+  'bg-teal-100 dark:bg-teal-300/10 text-teal-700 dark:text-teal-300',
+  'bg-rose-100 dark:bg-rose-300/10 text-rose-700 dark:text-rose-300',
 ];
 
 export function avatarColor(id: string) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Megaphone, Bell, ChevronRight, Loader2, Sun, Moon, MessageSquare, ScanSearch } from 'lucide-react';
+import { Users, Megaphone, Bell, ChevronRight, Sun, Moon, MessageSquare, ScanSearch } from 'lucide-react';
 import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign } from './api';
 import type { UGC, Campana } from './data';
 import UGCsTab from './components/UGCsTab';
@@ -162,10 +162,88 @@ export default function App() {
   // ── Loading state ────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-app)' }}>
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--color-brand)' }} />
-          <p className="text-sm font-medium" style={{ color: 'var(--color-text-2)' }}>Cargando datos desde BigQuery...</p>
+      <div className="h-screen w-screen flex overflow-hidden" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+        {/* Sidebar skeleton */}
+        <aside className="w-56 flex-shrink-0 flex flex-col border-r animate-pulse" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}>
+          <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl" style={{ backgroundColor: 'var(--color-border)' }} />
+              <div className="flex flex-col gap-1.5">
+                <div className="h-3 w-20 rounded-md" style={{ backgroundColor: 'var(--color-border)' }} />
+                <div className="h-2 w-14 rounded-md" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+              </div>
+            </div>
+          </div>
+          <nav className="flex-1 py-4 px-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-0.5">
+                <div className="w-4 h-4 rounded-md flex-shrink-0" style={{ backgroundColor: 'var(--color-border)' }} />
+                <div className="h-3 rounded-md flex-1" style={{ backgroundColor: 'var(--color-border)' }} />
+                <div className="w-6 h-4 rounded-md" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+              </div>
+            ))}
+            <div className="mt-6 px-2">
+              <div className="h-2 w-14 rounded-md mb-3" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="flex items-center justify-between mb-2.5">
+                  <div className="h-2.5 w-20 rounded-md" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+                  <div className="h-2.5 w-6 rounded-md" style={{ backgroundColor: 'var(--color-border)' }} />
+                </div>
+              ))}
+            </div>
+          </nav>
+          <div className="px-3 py-4 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+            <div className="flex items-center gap-2.5 px-2 py-2">
+              <div className="w-8 h-8 rounded-lg flex-shrink-0" style={{ backgroundColor: 'var(--color-border)' }} />
+              <div className="flex flex-col gap-1.5 flex-1">
+                <div className="h-2.5 w-16 rounded-md" style={{ backgroundColor: 'var(--color-border)' }} />
+                <div className="h-2 w-12 rounded-md" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+              </div>
+            </div>
+          </div>
+        </aside>
+        {/* Main area skeleton */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="border-b px-6 py-4 flex items-center justify-between flex-shrink-0 animate-pulse" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}>
+            <div className="flex flex-col gap-1.5">
+              <div className="h-4 w-36 rounded-md" style={{ backgroundColor: 'var(--color-border)' }} />
+              <div className="h-2.5 w-52 rounded-md" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-8 h-8 rounded-xl" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+              <div className="w-8 h-8 rounded-xl" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+            </div>
+          </header>
+          <main className="flex-1 p-6 overflow-auto animate-pulse" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+            <div className="flex gap-3 items-center mb-4">
+              <div className="flex-1 h-10 rounded-xl border" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }} />
+              <div className="w-24 h-10 rounded-xl border" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }} />
+              <div className="w-32 h-10 rounded-xl" style={{ backgroundColor: 'var(--color-brand)', opacity: 0.15 }} />
+            </div>
+            <div className="border rounded-2xl overflow-hidden" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+              <div className="flex items-center gap-8 px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                {[120, 80, 100, 140, 110, 80].map((w, i) => (
+                  <div key={i} className="h-2.5 rounded-md" style={{ width: w, backgroundColor: 'var(--color-border-subtle)' }} />
+                ))}
+              </div>
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="flex items-center gap-8 px-4 py-3.5 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                  <div className="flex items-center gap-2.5" style={{ width: 120 }}>
+                    <div className="w-8 h-8 rounded-lg flex-shrink-0" style={{ backgroundColor: 'var(--color-border)' }} />
+                    <div className="h-3 w-20 rounded-md" style={{ backgroundColor: 'var(--color-border)' }} />
+                  </div>
+                  <div className="h-5 w-20 rounded-md" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+                  <div className="h-2 w-24 rounded-full" style={{ backgroundColor: 'var(--color-border)' }} />
+                  <div className="h-3 w-28 rounded-md" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+                  <div className="h-5 w-24 rounded-full" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+                  <div className="flex gap-1.5">
+                    <div className="w-7 h-7 rounded-lg" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+                    <div className="w-7 h-7 rounded-lg" style={{ backgroundColor: 'var(--color-border-subtle)' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </main>
         </div>
       </div>
     );
@@ -213,7 +291,6 @@ export default function App() {
 
         {/* Nav */}
         <nav className="flex-1 py-4 px-3">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] px-2 mb-2" style={{ color: 'var(--color-text-3)' }}>Menú</p>
           {NAV_ITEMS.map(item => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -324,10 +401,10 @@ export default function App() {
                   {activeTab === 'chats' && 'Centro de Mensajería'}
                 </h1>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>
-                  {activeTab === 'ugcs' && `${ugcs.length} creadores registrados · ${calificados} calificados`}
-                  {activeTab === 'prospeccion' && '4 búsquedas · 1 en progreso · 109 creadores hallados'}
-                  {activeTab === 'campanas' && `${campanas.length} campañas · ${activas} activas`}
-                  {activeTab === 'chats' && `${ugcs.filter(u => u.unread).length} chats sin leer`}
+                  {activeTab === 'ugcs' && 'Gestioná, calificá y asigná creadores a tus campañas'}
+                  {activeTab === 'prospeccion' && 'Buscá y calificá nuevos creadores UGC para tus campañas'}
+                  {activeTab === 'campanas' && 'Creá, pausá y monitoreá el progreso de tus campañas activas'}
+                  {activeTab === 'chats' && 'Respondé mensajes y coordiná con tus creadores en un solo lugar'}
                 </p>
               </div>
             ) }
@@ -347,7 +424,9 @@ export default function App() {
             </button>
             {/* Notifications */}
             <button
-              className="relative w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200"
+              aria-label="Notificaciones"
+              title="Notificaciones"
+              className="relative w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
               style={{ color: 'var(--color-text-3)' }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}

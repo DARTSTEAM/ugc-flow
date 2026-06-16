@@ -12,7 +12,16 @@ const HEADFUL_PLATFORMS = (process.env.HEADFUL_PLATFORMS ?? 'instagram')
   .split(',')
   .map(p => p.trim().toLowerCase());
 
-const client = new Kernel({ apiKey: process.env.KERNEL_API_KEY });
+// Lazy-initialize so the server can start without KERNEL_API_KEY when scraping isn't used.
+let _client = null;
+function getClient() {
+  if (!_client) {
+    const apiKey = process.env.KERNEL_API_KEY;
+    if (!apiKey) throw new Error('[Kernel] KERNEL_API_KEY env var is required to use the scraper.');
+    _client = new Kernel({ apiKey });
+  }
+  return _client;
+}
 
 export async function getBrowser(platform) {
   const key = platform.toLowerCase();
@@ -41,7 +50,7 @@ export async function getBrowser(platform) {
     if (profileName) createOpts.profile = { id: profileName };
     if (process.env.KERNEL_PROXY_ID) createOpts.proxy_id = process.env.KERNEL_PROXY_ID;
 
-    const kernelBrowser = await client.browsers.create(createOpts);
+    const kernelBrowser = await getClient().browsers.create(createOpts);
 
     console.log(`[Kernel] Browser created for ${platform} | session: ${kernelBrowser.session_id}`);
     if (kernelBrowser.browser_live_view_url) {
@@ -80,7 +89,7 @@ export async function closeBrowser(platform) {
   pool.delete(key);
   try {
     await entry.browser.close();
-    await client.browsers.deleteByID(entry.sessionId);
+    await getClient().browsers.deleteByID(entry.sessionId);
   } catch (err) {
     console.error(`[Kernel] Error closing ${platform} browser:`, err.message);
   }

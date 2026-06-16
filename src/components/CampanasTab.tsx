@@ -1,28 +1,49 @@
-import { Plus, Pause, Play, Eye, Rocket } from 'lucide-react';
-import type { Campana, UGC } from '../data';
+import { useState } from 'react';
+import { Plus, Rocket, ChevronDown, ArrowUpRight } from 'lucide-react';
+import type { Campana, EstadoCampana, UGC } from '../data';
 import { ESTADO_CAMPANA_CONFIG } from '../utils';
 
 interface Props {
   campanas: Campana[];
-  ugcs: UGC[];
+  ugcs: UGC[];           // kept for API compatibility; not used internally
   onSelectCampana: (c: Campana) => void;
   onTogglePause: (c: Campana) => void;
   onLanzar: (c: Campana) => void;
   onAddCampana: () => void;
 }
 
-function CampanaCard({ campana, ugcs, onSelect, onTogglePause, onLanzar }: {
+const PAGE_SIZE = 20;
+
+const CAMPANA_CARD_COLORS: Record<EstadoCampana, { cardBg: string; cardBorder: string }> = {
+  'Activa':   { cardBg: '#dcfce7', cardBorder: '#86efac' },
+  'Pausada':  { cardBg: '#fef9c3', cardBorder: '#fde047' },
+  'Borrador': { cardBg: '#ffedd5', cardBorder: '#fdba74' },
+  'Cerrada':  { cardBg: '#f1f5f9', cardBorder: '#cbd5e1' },
+};
+
+type FilterCampana = 'Todas' | 'Activas' | 'Borradores' | 'Cerradas';
+
+const FILTER_PILL_COLORS: Record<Exclude<FilterCampana, 'Todas'>, {
+  pillBg: string; pillText: string; pillBorder: string;
+  pillActiveBg: string; pillActiveText: string; pillActiveBorder: string;
+}> = {
+  'Activas':    { pillBg: '#dcfce7', pillText: '#166534', pillBorder: '#86efac', pillActiveBg: '#bbf7d0', pillActiveText: '#14532d', pillActiveBorder: '#4ade80' },
+  'Borradores': { pillBg: '#ffedd5', pillText: '#9a3412', pillBorder: '#fdba74', pillActiveBg: '#fed7aa', pillActiveText: '#7c2d12', pillActiveBorder: '#fb923c' },
+  'Cerradas':   { pillBg: '#f1f5f9', pillText: '#475569', pillBorder: '#cbd5e1', pillActiveBg: '#e2e8f0', pillActiveText: '#334155', pillActiveBorder: '#94a3b8' },
+};
+
+function CampanaCard({ campana, cardBg, cardBorder, onSelect }: {
   campana: Campana;
-  ugcs: UGC[];
+  cardBg: string;
+  cardBorder: string;
   onSelect: () => void;
-  onTogglePause: () => void;
-  onLanzar: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   const estadoCfg = ESTADO_CAMPANA_CONFIG[campana.estado];
-  const enviados = campana.ugcs.filter(u => u.estado !== 'No aplica').length;
+  const enviados    = campana.ugcs.filter(u => u.estado !== 'No aplica').length;
   const respondidos = campana.ugcs.filter(u => ['Respondió', 'Calificado'].includes(u.estado)).length;
   const calificados = campana.ugcs.filter(u => u.estado === 'Calificado').length;
-  const progreso = Math.min(Math.round((enviados / campana.objetivo) * 100), 100);
+  const progreso    = Math.min(Math.round((enviados / campana.objetivo) * 100), 100);
 
   const progressColor = campana.estado === 'Cerrada'
     ? '#CBD5E1'
@@ -32,39 +53,51 @@ function CampanaCard({ campana, ugcs, onSelect, onTogglePause, onLanzar }: {
 
   return (
     <div
-      className="border rounded-2xl p-5 flex flex-col gap-4 group cursor-pointer transition-all duration-200"
-      style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-card-hover)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-border)'; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-card)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)'; }}
+      onClick={onSelect}
+      className="border rounded-2xl p-5 flex flex-col gap-4 cursor-pointer select-none"
+      style={{
+        backgroundColor: cardBg,
+        borderColor: hovered ? 'var(--color-brand)' : cardBorder,
+        boxShadow: hovered ? 'var(--shadow-card-hover)' : 'var(--shadow-card)',
+        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+        transition: 'border-color 150ms, box-shadow 150ms, transform 150ms',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex-1 min-w-0 pr-2">
-          <h3
-            onClick={onSelect}
-            className="font-bold text-sm cursor-pointer transition-colors duration-200"
-            style={{ color: 'var(--color-text-1)' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'}
-          >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-sm leading-snug" style={{ color: '#111827' }}>
             {campana.nombre}
           </h3>
-          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--color-text-3)' }}>{campana.descripcion}</p>
+          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: '#6b7280' }}>{campana.descripcion}</p>
         </div>
-        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0 ${estadoCfg.className}`}>
-          {estadoCfg.label}
-        </span>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Arrow indicator — visible on hover */}
+          <div style={{
+            opacity: hovered ? 1 : 0,
+            transform: hovered ? 'translateX(0) scale(1)' : 'translateX(4px) scale(0.8)',
+            transition: 'opacity 150ms, transform 150ms',
+          }}>
+            <ArrowUpRight className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+          </div>
+          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${estadoCfg.className}`}>
+            {estadoCfg.label}
+          </span>
+        </div>
       </div>
 
       {/* Progress bar */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] font-mono" style={{ color: 'var(--color-text-3)' }}>{enviados}/{campana.objetivo} UGCs</span>
-          <span className="text-[10px] font-bold font-mono" style={{ color: 'var(--color-text-2)' }}>{progreso}%</span>
+          <span className="text-[10px] font-mono" style={{ color: '#6b7280' }}>{enviados}/{campana.objetivo} UGCs</span>
+          <span className="text-[10px] font-bold font-mono" style={{ color: '#374151' }}>{progreso}%</span>
         </div>
-        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}>
           <div
-            className="h-full rounded-full transition-all duration-700"
-            style={{ width: `${progreso}%`, backgroundColor: progressColor }}
+            className="h-full rounded-full"
+            style={{ width: `${progreso}%`, backgroundColor: progressColor, transition: 'width 700ms' }}
           />
         </div>
       </div>
@@ -72,64 +105,47 @@ function CampanaCard({ campana, ugcs, onSelect, onTogglePause, onLanzar }: {
       {/* Stats */}
       <div className="flex gap-3">
         {[
-          { label: 'Enviados', value: enviados },
+          { label: 'Enviados',    value: enviados },
           { label: 'Respondidos', value: respondidos },
           { label: 'Calificados', value: calificados },
         ].map(s => (
-          <div key={s.label} className="flex-1 p-2 rounded-xl text-center" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
-            <p className="text-base font-black font-mono" style={{ color: 'var(--color-text-1)' }}>{s.value}</p>
-            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-3)' }}>{s.label}</p>
+          <div key={s.label} className="flex-1 p-2 rounded-xl text-center" style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}>
+            <p className="text-base font-black font-mono" style={{ color: '#111827' }}>{s.value}</p>
+            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#6b7280' }}>{s.label}</p>
           </div>
         ))}
       </div>
 
       {/* Date range */}
-      <p className="text-[10px] font-mono" style={{ color: 'var(--color-text-3)' }}>{campana.fechaInicio} → {campana.fechaFin}</p>
+      <p className="text-[10px] font-mono" style={{ color: '#6b7280' }}>{campana.fechaInicio} → {campana.fechaFin}</p>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2 pt-1 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
-        <button
-          onClick={onSelect}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold border rounded-xl transition-all duration-200"
-          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-light)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand-border)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-brand-hover)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-2)'; }}
-        >
-          <Eye className="w-3.5 h-3.5" />Ver detalle
-        </button>
-        {campana.estado !== 'Cerrada' && campana.estado !== 'Borrador' && (
-          <button
-            onClick={onTogglePause}
-            className="flex items-center justify-center gap-1 p-2 border rounded-xl transition-all duration-200"
-            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
-            title={campana.estado === 'Pausada' ? 'Reanudar campaña' : 'Pausar campaña'}
-          >
-            {campana.estado === 'Pausada' ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-          </button>
-        )}
-        {campana.estado !== 'Cerrada' && (
-          <button
-            onClick={onLanzar}
-            className="flex items-center justify-center gap-1 p-2 text-white rounded-xl transition-all duration-200 active:scale-[0.95]"
-            style={{ backgroundColor: 'var(--color-brand)' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
-            title="Lanzar envío"
-          >
-            <Rocket className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
     </div>
   );
 }
 
-export default function CampanasTab({ campanas, ugcs, onSelectCampana, onTogglePause, onLanzar, onAddCampana }: Props) {
-  const activas = campanas.filter(c => c.estado === 'Activa');
-  const borradores = campanas.filter(c => c.estado === 'Borrador');
-  const cerradas = campanas.filter(c => c.estado === 'Cerrada' || c.estado === 'Pausada');
+export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }: Props) {
+  const [filter, setFilter]           = useState<FilterCampana>('Todas');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const sorted = [...campanas].sort((a, b) => b.fechaInicio.localeCompare(a.fechaInicio));
+
+  const filtered =
+    filter === 'Todas'      ? sorted :
+    filter === 'Activas'    ? sorted.filter(c => c.estado === 'Activa' || c.estado === 'Pausada') :
+    filter === 'Borradores' ? sorted.filter(c => c.estado === 'Borrador') :
+                              sorted.filter(c => c.estado === 'Cerrada');
+
+  const paged   = filtered.slice(0, visibleCount);
+  const hasMore = filtered.length > visibleCount;
+
+  const totalActivas    = campanas.filter(c => c.estado === 'Activa' || c.estado === 'Pausada').length;
+  const totalEnviados   = campanas.flatMap(c => c.ugcs).filter(u => u.estado !== 'No aplica').length;
+  const totalCalificados = campanas.flatMap(c => c.ugcs).filter(u => u.estado === 'Calificado').length;
+
+  function handleFilterChange(f: FilterCampana) {
+    setFilter(f);
+    setVisibleCount(PAGE_SIZE);
+  }
 
   if (campanas.length === 0) {
     return (
@@ -155,48 +171,115 @@ export default function CampanasTab({ campanas, ugcs, onSelectCampana, onToggleP
     );
   }
 
-  function Section({ title, items }: { title: string; items: Campana[] }) {
-    if (items.length === 0) return null;
-    return (
-      <div>
-        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3" style={{ color: 'var(--color-text-3)' }}>{title}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {items.map(c => (
-            <CampanaCard
-              key={c.id}
-              campana={c}
-              ugcs={ugcs}
-              onSelect={() => onSelectCampana(c)}
-              onTogglePause={() => onTogglePause(c)}
-              onLanzar={() => onLanzar(c)}
-            />
-          ))}
+  return (
+    <div className="flex flex-col gap-5">
+
+      {/* ── Stats bar ─────────────────────────────────────────────── */}
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          { label: 'Total campañas',        value: campanas.length,  color: 'var(--color-text-1)', sub: 'registradas' },
+          { label: 'Activas',               value: totalActivas,     color: '#10b981',             sub: 'en curso ahora' },
+          { label: 'Creadores contactados', value: totalEnviados,    color: 'var(--color-brand)',  sub: 'en total' },
+          { label: 'Calificados',           value: totalCalificados, color: '#3b82f6',             sub: 'listos para producir' },
+        ].map(stat => (
+          <div
+            key={stat.label}
+            className="rounded-2xl px-5 py-4 border"
+            style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)', boxShadow: 'var(--shadow-card)' }}
+          >
+            <p className="text-2xl font-black font-mono" style={{ color: stat.color }}>{stat.value}</p>
+            <p className="text-xs font-semibold mt-0.5" style={{ color: 'var(--color-text-2)' }}>{stat.label}</p>
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-3)' }}>{stat.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Toolbar ───────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        {/* Filter pills */}
+        <div className="flex items-center gap-1.5">
+          {(['Todas', 'Activas', 'Borradores', 'Cerradas'] as FilterCampana[]).map(f => {
+            const isActive = filter === f;
+            const cfg = f !== 'Todas' ? FILTER_PILL_COLORS[f] : null;
+            const pillStyle: React.CSSProperties = cfg
+              ? isActive
+                ? { backgroundColor: cfg.pillActiveBg, color: cfg.pillActiveText, border: `1.5px solid ${cfg.pillActiveBorder}`, boxShadow: `0 0 0 1px ${cfg.pillActiveBorder}` }
+                : { backgroundColor: cfg.pillBg, color: cfg.pillText, border: `1px solid ${cfg.pillBorder}` }
+              : isActive
+                ? { backgroundColor: 'var(--color-brand)', color: '#fff', boxShadow: 'var(--shadow-btn-brand)' }
+                : { backgroundColor: 'var(--color-surface)', color: 'var(--color-text-2)', border: '1px solid var(--color-border-subtle)' };
+            return (
+              <button
+                key={f}
+                onClick={() => handleFilterChange(f)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.97]"
+                style={pillStyle}
+              >
+                {f}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Count + CTA */}
+        <div className="flex items-center gap-3">
+          <p className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+            {filtered.length} campaña{filtered.length !== 1 ? 's' : ''}
+          </p>
+          <button
+            onClick={onAddCampana}
+            className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 active:scale-[0.97]"
+            style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
+          >
+            <Plus className="w-4 h-4" />
+            Nueva campaña
+          </button>
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <p className="text-xs" style={{ color: 'var(--color-text-3)' }}>
-          {campanas.length} campañas en total · {activas.length} activas
-        </p>
-        <button
-          onClick={onAddCampana}
-          className="flex items-center gap-2 px-4 py-2.5 text-white rounded-xl text-sm font-semibold transition-all duration-200 active:scale-[0.97]"
-          style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
-          onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
-          onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
-        >
-          <Plus className="w-4 h-4" />
-          Nueva campaña
-        </button>
-      </div>
+      {/* ── Grid ──────────────────────────────────────────────────── */}
+      {paged.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
+            <Rocket className="w-6 h-6" style={{ color: 'var(--color-text-3)' }} />
+          </div>
+          <p className="text-sm font-semibold" style={{ color: 'var(--color-text-2)' }}>Sin campañas en esta categoría</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {paged.map(c => {
+              const colors = CAMPANA_CARD_COLORS[c.estado];
+              return (
+                <CampanaCard
+                  key={c.id}
+                  campana={c}
+                  cardBg={colors.cardBg}
+                  cardBorder={colors.cardBorder}
+                  onSelect={() => onSelectCampana(c)}
+                />
+              );
+            })}
+          </div>
 
-      <Section title="Activas" items={activas} />
-      <Section title="Borradores" items={borradores} />
-      <Section title="Pausadas / Cerradas" items={cerradas} />
+          {hasMore && (
+            <div className="flex justify-center pt-2 pb-4">
+              <button
+                onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
+                className="flex items-center gap-2 px-5 py-2.5 border rounded-xl text-sm font-semibold transition-all duration-200"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
+              >
+                <ChevronDown className="w-4 h-4" />
+                Ver más ({filtered.length - visibleCount} restantes)
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

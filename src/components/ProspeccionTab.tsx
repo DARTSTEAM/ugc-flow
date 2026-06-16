@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, MapPin, Users, TrendingUp, Calendar, ArrowRight, Search, Clock, CheckCircle2, FileText } from 'lucide-react';
+import { Plus, MapPin, Users, TrendingUp, Calendar, ArrowRight, Search, Clock, CheckCircle2, FileText, ChevronDown } from 'lucide-react';
 import type { Busqueda, EstadoBusqueda } from './BusquedaDrawer';
 import BusquedaDrawer from './BusquedaDrawer';
 import NuevaBusquedaModal from './NuevaBusquedaModal';
@@ -69,12 +69,39 @@ const BUSQUEDAS_MOCK: Busqueda[] = [
 ];
 
 // ── Static config ───────────────────────────────────────────────────────────
+const PAGE_SIZE = 20;
 type FilterOpt = EstadoBusqueda | 'Todas';
 
-const ESTADO_CFG: Record<EstadoBusqueda, { badge: string; dot: string; icon: typeof Clock }> = {
-  'En progreso': { badge: 'bg-blue-50 text-blue-700 border border-blue-100',          dot: 'bg-blue-500',    icon: Clock },
-  'Completada':  { badge: 'bg-emerald-50 text-emerald-700 border border-emerald-200',  dot: 'bg-emerald-500', icon: CheckCircle2 },
-  'Borrador':    { badge: 'bg-slate-100 text-slate-600 border border-slate-200',        dot: 'bg-slate-400',   icon: FileText },
+const ESTADO_CFG: Record<EstadoBusqueda, {
+  badge: string; dot: string; icon: typeof Clock;
+  cardBg: string; cardBorder: string;
+  pillBg: string; pillText: string; pillBorder: string;
+  pillActiveBg: string; pillActiveText: string; pillActiveBorder: string;
+}> = {
+  'En progreso': {
+    badge: 'bg-yellow-100 text-yellow-800 border border-yellow-300',
+    dot: 'bg-yellow-500',
+    icon: Clock,
+    cardBg: '#fef9c3', cardBorder: '#fde047',
+    pillBg: '#fef9c3', pillText: '#854d0e', pillBorder: '#fde047',
+    pillActiveBg: '#fef08a', pillActiveText: '#713f12', pillActiveBorder: '#facc15',
+  },
+  'Completada': {
+    badge: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
+    dot: 'bg-emerald-500',
+    icon: CheckCircle2,
+    cardBg: '#dcfce7', cardBorder: '#86efac',
+    pillBg: '#dcfce7', pillText: '#166534', pillBorder: '#86efac',
+    pillActiveBg: '#bbf7d0', pillActiveText: '#14532d', pillActiveBorder: '#4ade80',
+  },
+  'Borrador': {
+    badge: 'bg-orange-100 text-orange-800 border border-orange-300',
+    dot: 'bg-orange-500',
+    icon: FileText,
+    cardBg: '#ffedd5', cardBorder: '#fdba74',
+    pillBg: '#ffedd5', pillText: '#9a3412', pillBorder: '#fdba74',
+    pillActiveBg: '#fed7aa', pillActiveText: '#7c2d12', pillActiveBorder: '#fb923c',
+  },
 };
 
 const PLATAFORMA_BADGE: Record<string, string> = {
@@ -95,13 +122,21 @@ export default function ProspeccionTab() {
   const [selected, setSelected] = useState<Busqueda | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState<FilterOpt>('Todas');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const completadas = busquedas.filter(b => b.estado === 'Completada').length;
-  const enProgreso  = busquedas.filter(b => b.estado === 'En progreso').length;
-  const borradores  = busquedas.filter(b => b.estado === 'Borrador').length;
+  const completadas  = busquedas.filter(b => b.estado === 'Completada').length;
+  const enProgreso   = busquedas.filter(b => b.estado === 'En progreso').length;
+  const borradores   = busquedas.filter(b => b.estado === 'Borrador').length;
   const totalResults = busquedas.reduce((s, b) => s + b.resultados, 0);
 
   const visible = filter === 'Todas' ? busquedas : busquedas.filter(b => b.estado === filter);
+  const paged   = visible.slice(0, visibleCount);
+  const hasMore = visible.length > visibleCount;
+
+  function handleFilterChange(f: FilterOpt) {
+    setFilter(f);
+    setVisibleCount(PAGE_SIZE);
+  }
 
   return (
     <div className="h-full flex flex-col gap-5">
@@ -130,19 +165,27 @@ export default function ProspeccionTab() {
       <div className="flex items-center justify-between">
         {/* Filter pills */}
         <div className="flex items-center gap-1.5">
-          {(['Todas', 'En progreso', 'Completada', 'Borrador'] as FilterOpt[]).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.97]"
-              style={filter === f
+          {(['Todas', 'En progreso', 'Completada', 'Borrador'] as FilterOpt[]).map(f => {
+            const isActive = filter === f;
+            const cfg = f !== 'Todas' ? ESTADO_CFG[f as EstadoBusqueda] : null;
+            const pillStyle: React.CSSProperties = cfg
+              ? isActive
+                ? { backgroundColor: cfg.pillActiveBg, color: cfg.pillActiveText, border: `1.5px solid ${cfg.pillActiveBorder}`, boxShadow: `0 0 0 1px ${cfg.pillActiveBorder}` }
+                : { backgroundColor: cfg.pillBg, color: cfg.pillText, border: `1px solid ${cfg.pillBorder}` }
+              : isActive
                 ? { backgroundColor: 'var(--color-brand)', color: '#fff', boxShadow: 'var(--shadow-btn-brand)' }
-                : { backgroundColor: 'var(--color-surface)', color: 'var(--color-text-2)', border: '1px solid var(--color-border-subtle)' }
-              }
-            >
-              {f}
-            </button>
-          ))}
+                : { backgroundColor: 'var(--color-surface)', color: 'var(--color-text-2)', border: '1px solid var(--color-border-subtle)' };
+            return (
+              <button
+                key={f}
+                onClick={() => handleFilterChange(f)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-[0.97]"
+                style={pillStyle}
+              >
+                {f}
+              </button>
+            );
+          })}
         </div>
 
         {/* CTA */}
@@ -175,8 +218,9 @@ export default function ProspeccionTab() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 pb-4">
-          {visible.map(b => {
+        <>
+        <div className="grid grid-cols-2 gap-4">
+          {paged.map(b => {
             const ecfg = ESTADO_CFG[b.estado];
             const EstadoIcon = ecfg.icon;
             return (
@@ -185,8 +229,8 @@ export default function ProspeccionTab() {
                 onClick={() => setSelected(b)}
                 className="text-left rounded-2xl border p-5 transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.99] group"
                 style={{
-                  backgroundColor: 'var(--color-surface)',
-                  borderColor: 'var(--color-border-subtle)',
+                  backgroundColor: ecfg.cardBg,
+                  borderColor: ecfg.cardBorder,
                   boxShadow: 'var(--shadow-card)',
                 }}
                 onMouseEnter={e => (e.currentTarget.style.boxShadow = 'var(--shadow-card-hover)')}
@@ -213,7 +257,7 @@ export default function ProspeccionTab() {
                 {/* Name */}
                 <h3
                   className="text-base font-black leading-tight mb-1.5 transition-colors duration-200 group-hover:text-[var(--color-brand)]"
-                  style={{ color: 'var(--color-text-1)' }}
+                  style={{ color: '#111827' }}
                 >
                   {b.nombre}
                 </h3>
@@ -288,6 +332,22 @@ export default function ProspeccionTab() {
             );
           })}
         </div>
+
+        {hasMore && (
+          <div className="flex justify-center pt-2 pb-4">
+            <button
+              onClick={() => setVisibleCount(v => v + PAGE_SIZE)}
+              className="flex items-center gap-2 px-5 py-2.5 border rounded-xl text-sm font-semibold transition-all duration-200"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-surface-alt)')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'var(--color-surface)')}
+            >
+              <ChevronDown className="w-4 h-4" />
+              Ver más ({visible.length - visibleCount} restantes)
+            </button>
+          </div>
+        )}
+        </>
       )}
 
       {/* ── Drawer ────────────────────────────────────────────── */}

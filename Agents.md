@@ -3,7 +3,7 @@
 ## 1. Project Overview
 - **Name:** UGC Flow
 - **Purpose:** Internal web dashboard for NGR Digital to manage UGC (User-Generated Content) creator pipelines — from discovery and qualification to campaign assignment and messaging.
-- **Tech Stack:** TypeScript, React 19, Vite 7, Tailwind CSS v4, Express 5, Google BigQuery, Docker, Google Cloud Run, Google Cloud Build
+- **Tech Stack:** TypeScript, React 19, Vite 7, Tailwind CSS v4, Express 5, Google BigQuery, Kernel.sh (cloud browser/scraper), Playwright, Docker, Google Cloud Run, Google Cloud Build
 
 ---
 
@@ -12,6 +12,7 @@
 - **Design Pattern:** Single-page application (SPA) with a co-located Express API server. In dev, the API runs as a Vite middleware plugin (same port, `http://localhost:5173`). In production, the built frontend is served statically by Express (`server/prod.js`) on port 8080 inside a Docker container.
 - **Data source:** Google BigQuery — project `hike-agentic-playground`, dataset `ngr_ugc`. Tables: `creators`, `messages`, `qualifications`, `creator_scores`, `campaigns`, `campaign_creators`, `brands`.
 - **Authentication:** BigQuery access relies on ambient GCP credentials (ADC). No explicit auth config in code — the deployment environment (Cloud Run) must have the appropriate service account.
+- **Scraping:** Creator profile scraping runs through Kernel.sh (cloud browser). The `server/kernel/` module handles browser pool management and platform-specific scrapers. Required env vars: `KERNEL_API_KEY`, `KERNEL_PROFILE_INSTAGRAM`, `KERNEL_PROXY_ID`, `HEADFUL_PLATFORMS`. See `.env.example` for reference.
 
 ### Critical Directories & Files
 
@@ -25,11 +26,15 @@
 | `src/components/` | Feature components (one per tab + modals/drawers): |
 | `  UGCsTab.tsx` | Creator list with filters, search, sorting, and inline editing. |
 | `  ChatsTab.tsx` | Messaging center per creator, split-pane view. |
-| `  CampanasTab.tsx` | Campaign list view with status management. |
-| `  CampanaDetail.tsx` | Campaign detail with UGC funnel and status tracking. |
+| `  CampanasTab.tsx` | Campaign list with status-color cards, filter nav (Todas/Activas/Borradores/Cerradas), KPI stats bar, and paginated grid (20 per page). |
+| `  CampanaDetail.tsx` | Campaign detail with UGC funnel, status tracking, and action buttons (Pausar/Lanzar live here, not in cards). |
 | `  NuevaCampanaModal.tsx` | Modal to create a new campaign. |
-| `  UGCDrawer.tsx` | Slide-in drawer for creator detail/edit. |
-| `server/index.js` | Express API. Exports the `app` for Vite middleware; also runs standalone (port 3001) when invoked directly. |
+| `  UGCDrawer.tsx` | Slide-in drawer for creator detail/edit with evaluation tabs. |
+| `  ProspeccionTab.tsx` | UGC search/discovery view with color-coded status cards, filter nav, stats bar, and paginated grid (20 per page). |
+| `server/index.js` | Express API. Exports the `app` for Vite middleware; also runs standalone (port 3001) when invoked directly. Includes scraper endpoints (`/api/scrape/profile`, etc.). |
+| `server/kernel/index.js` | Scraper orchestrator — exposes `scrapeCreatorProfiles()`. Entry point for the Kernel.sh integration. |
+| `server/kernel/browser-pool.js` | Manages Playwright browser instances via Kernel.sh cloud browser API. |
+| `server/kernel/scrapers/instagram-profile.js` | Instagram-specific profile scraper (followers, bio, engagement). |
 | `server/prod.js` | Production server: serves `/dist` statically + mounts the API. |
 | `vite.config.ts` | Vite config; includes the custom `apiServer()` plugin that mounts `server/index.js` as Vite middleware in dev. |
 | `Dockerfile` | Two-stage build: Stage 1 builds the frontend, Stage 2 runs Express with `dist/` + `server/`. |
@@ -45,6 +50,8 @@
 - **Typography:** DM Sans (body/UI), DM Mono (data/code elements).
 - **Dark mode:** Toggled by adding/removing the `dark` class on `<html>`. Stored in `localStorage` under key `ugcflow-theme`. CSS variables in `src/index.css` handle both modes.
 - **Styling approach:** Use CSS custom properties (e.g. `var(--color-brand)`, `var(--color-surface)`) via inline `style={{}}` props OR Tailwind v4 utility classes. **Do not mix both systems arbitrarily** — prefer CSS vars for semantic color, Tailwind for layout/spacing.
+- **Status-color cards:** CampanasTab and ProspeccionTab use **fixed pastel hex colors** for card backgrounds and borders (not CSS vars) because they must be legible in both light and dark mode. When a card has a fixed pastel background, all text inside must also use fixed hex colors (`#111827` for headings, `#6b7280` for secondary text) instead of CSS vars like `var(--color-text-1)` which would become white in dark mode.
+- **Pagination pattern:** List views that may grow use `PAGE_SIZE = 20`, a `visibleCount` state, and a "Ver más (N restantes)" button. Filter changes reset `visibleCount` to `PAGE_SIZE`.
 - **Rounded corners:** `rounded-xl` (12px) for interactive elements, `rounded-2xl` (16px) for cards/modals.
 - **Micro-animations:** All interactive elements must have `transition-all duration-200` and `active:scale-[0.98]`.
 
@@ -79,3 +86,4 @@
 ## 5. Session History (Context Log)
 
 - **2026-06-02:** Environment initialized by agent. Project structure fully mapped. Dev server confirmed running at `http://localhost:5173` via `npm run dev`. No `Agents.md` existed prior — created from scratch.
+- **2026-06-16:** Major UI overhaul session. CampanasTab redesigned with status-color cards, filter nav, KPI stats bar, clickable cards (hover indicator), pagination, and action buttons moved to CampanaDetail only. ProspeccionTab updated with stronger pastel colors, aligned color system, and pagination. Dark mode text fix: fixed-color headings on pastel card backgrounds. New `server/kernel/` scraper module added with Kernel.sh + Playwright for creator profile scraping (Instagram). UGCDrawer and CampanaDetail expanded with evaluation tabs and additional UI.

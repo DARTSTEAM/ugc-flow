@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   ArrowLeft, Rocket, Pause, Play, TrendingUp, TrendingDown,
   BarChart3, Users, Mail, CheckCircle, ChevronDown, ChevronUp, ChevronsUpDown, Award,
-  MessageCircleMore, X, Send, Zap, MessageSquare
+  MessageCircleMore, X, Send, Zap, MessageSquare, Loader2, RefreshCw
 } from 'lucide-react';
 import type { Campana, UGC, EstadoEnCampana } from '../data';
 import {
@@ -10,6 +10,7 @@ import {
   getInitials, avatarColor
 } from '../utils';
 import ConfirmarEnvioModal from './ConfirmarEnvioModal';
+import { scrapeCreatorsByCampaign } from '../api';
 
 interface Props {
   campana: Campana;
@@ -53,6 +54,8 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [showLanzarModal, setShowLanzarModal] = useState(false);
   const [showEnvioModal, setShowEnvioModal] = useState(false);
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<{ success: number; failed: number } | null>(null);
   const [overrideUGC, setOverrideUGC] = useState<UGC | null>(null);
   const [overrideMsg, setOverrideMsg] = useState('');
   const [overrideSent, setOverrideSent] = useState(false);
@@ -453,38 +456,85 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       {/* Lanzar Modal */}
       {showLanzarModal && (
         <>
-          <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-50 overlay-enter" onClick={() => setShowLanzarModal(false)} />
+          <div
+            className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-50 overlay-enter"
+            onClick={() => { if (!isScraping) setShowLanzarModal(false); }}
+          />
           <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
             <div className="rounded-2xl p-6 max-w-sm w-full mx-4 pointer-events-auto modal-enter border"
               style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}>
               <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: 'var(--color-brand-light)' }}>
-                <Rocket className="w-6 h-6" style={{ color: 'var(--color-brand)' }} />
+                {isScraping
+                  ? <RefreshCw className="w-6 h-6 animate-spin" style={{ color: 'var(--color-brand)' }} />
+                  : <Rocket className="w-6 h-6" style={{ color: 'var(--color-brand)' }} />
+                }
               </div>
-              <h3 className="text-lg font-black mb-1" style={{ color: 'var(--color-text-1)' }}>Confirmar lanzamiento</h3>
-              <p className="text-sm mb-5" style={{ color: 'var(--color-text-2)' }}>
-                Estás por lanzar el envío de <span className="font-semibold" style={{ color: 'var(--color-text-1)' }}>"{campana.nombre}"</span>.
-                Se contactarán automáticamente todos los UGCs asignados.
-              </p>
+              <h3 className="text-lg font-black mb-1" style={{ color: 'var(--color-text-1)' }}>
+                {isScraping ? 'Actualizando métricas...' : 'Confirmar lanzamiento'}
+              </h3>
+              {isScraping ? (
+                <div className="mb-5">
+                  <p className="text-sm mb-3" style={{ color: 'var(--color-text-2)' }}>
+                    Analizando perfiles de los {campana.ugcs.length} creadores asignados con Kernel.
+                    Esto puede tardar unos minutos.
+                  </p>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                    <div className="h-full rounded-full animate-pulse" style={{ width: '60%', backgroundColor: 'var(--color-brand)' }} />
+                  </div>
+                </div>
+              ) : scrapeResult ? (
+                <div className="mb-5">
+                  <p className="text-sm" style={{ color: 'var(--color-text-2)' }}>
+                    Métricas actualizadas: <span className="font-semibold" style={{ color: 'var(--color-text-1)' }}>{scrapeResult.success}</span> correctos
+                    {scrapeResult.failed > 0 && <>, <span className="text-rose-500 font-semibold">{scrapeResult.failed}</span> fallidos</>}.
+                    Lanzando la campaña ahora.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm mb-5" style={{ color: 'var(--color-text-2)' }}>
+                  Estás por lanzar <span className="font-semibold" style={{ color: 'var(--color-text-1)' }}>"{campana.nombre}"</span>.
+                  Se actualizarán las métricas de {campana.ugcs.length} creadores con Kernel antes del envío.
+                </p>
+              )}
               <div className="flex gap-2">
                 <button
-                  onClick={() => { onLanzar(campana); setShowLanzarModal(false); }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold transition-all duration-200 text-sm active:scale-[0.97]"
+                  disabled={isScraping}
+                  onClick={async () => {
+                    setIsScraping(true);
+                    setScrapeResult(null);
+                    try {
+                      const result = await scrapeCreatorsByCampaign(campana.id);
+                      setScrapeResult({ success: result.success.length, failed: result.failed.length });
+                    } catch {
+                      setScrapeResult({ success: 0, failed: campana.ugcs.length });
+                    } finally {
+                      setIsScraping(false);
+                    }
+                    // Show results briefly so the user can see them before the modal closes
+                    await new Promise<void>(r => setTimeout(r, 1500));
+                    onLanzar(campana);
+                    setShowLanzarModal(false);
+                    setScrapeResult(null);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold transition-all duration-200 text-sm active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
+                  onMouseEnter={e => { if (!isScraping) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'; }}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
                 >
-                  <Rocket className="w-4 h-4" />
-                  Lanzar ahora
+                  {isScraping ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
+                  {isScraping ? 'Analizando...' : 'Lanzar ahora'}
                 </button>
-                <button
-                  onClick={() => setShowLanzarModal(false)}
-                  className="px-4 py-2.5 border rounded-xl font-semibold transition-all duration-200 text-sm"
-                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
-                >
-                  Cancelar
-                </button>
+                {!isScraping && (
+                  <button
+                    onClick={() => { setShowLanzarModal(false); setScrapeResult(null); }}
+                    className="px-4 py-2.5 border rounded-xl font-semibold transition-all duration-200 text-sm"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
+                  >
+                    Cancelar
+                  </button>
+                )}
               </div>
             </div>
           </div>

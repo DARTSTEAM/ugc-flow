@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import {
   X, MessageCircle, TrendingUp, Award, ChevronRight, Send,
-  Loader2, RefreshCw, AlertTriangle, CheckCircle2, BarChart2, Tv2,
+  Loader2, RefreshCw, AlertTriangle, CheckCircle2, BarChart2, Tv2, Pencil,
+  ChevronDown, Plus,
 } from 'lucide-react';
 import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta } from '../data';
 import { scoreColor, ESTADO_UGC_CONFIG, getInitials, avatarColor, needsInfoUpdate, formatLastScraped } from '../utils';
-import { fetchCreatorDetail, updateEvaluacionOrganica, updateEvaluacionPauta } from '../api';
+import { fetchCreatorDetail, updateCreator, updateEvaluacionOrganica, updateEvaluacionPauta, scrapeCreator } from '../api';
 
 type DrawerTab = 'Perfil' | 'Contenido Orgánico' | 'Pauta';
 
@@ -18,9 +19,20 @@ interface Props {
   onDescartar: (ugc: UGC) => void;
   onAsignar: (ugc: UGC, campanaId: string) => void;
   onUpdateUGC: (ugc: UGC) => void;
+  onGoToChat: (ugc: UGC) => void;
 }
 
 const ESTADO_ORDER = ['Nuevo', 'Contactado', 'Respondió', 'Calificado', 'Descartado'] as const;
+
+function estadoCampanaStyle(estado: string): React.CSSProperties {
+  switch (estado) {
+    case 'Activa':   return { backgroundColor: 'rgba(34,197,94,0.1)',  color: 'rgb(22,163,74)',  border: '1px solid rgba(34,197,94,0.2)' };
+    case 'Borrador': return { backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-2)', border: '1px solid var(--color-border)' };
+    case 'Pausada':  return { backgroundColor: 'rgba(252,154,0,0.1)', color: 'rgb(180,83,9)',   border: '1px solid rgba(252,154,0,0.2)' };
+    case 'Cerrada':  return { backgroundColor: 'rgba(239,68,68,0.06)', color: 'rgb(185,28,28)', border: '1px solid rgba(239,68,68,0.15)' };
+    default:         return {};
+  }
+}
 
 // ─── Reusable form field ─────────────────────────────────────────────────────
 function FormField({
@@ -55,7 +67,7 @@ function FormField({
 }
 
 // ─── Read-only metric row ────────────────────────────────────────────────────
-function MetricRow({ label, value, unit }: { label: string; value: string | number | undefined; unit?: string }) {
+function MetricRow({ label, value, unit }: { label: string; value: string | number | null | undefined; unit?: string }) {
   return (
     <div className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
       <span className="text-xs" style={{ color: 'var(--color-text-2)' }}>{label}</span>
@@ -70,7 +82,7 @@ function MetricRow({ label, value, unit }: { label: string; value: string | numb
 
 export default function UGCDrawer({
   ugc: ugcProp, campanas, initialTab = 'Perfil',
-  onClose, onAvanzar, onDescartar, onAsignar, onUpdateUGC,
+  onClose, onAvanzar, onDescartar, onAsignar, onUpdateUGC, onGoToChat,
 }: Props) {
   const [ugc, setUgc] = useState<UGC>(ugcProp);
   const [loadingDetail, setLoadingDetail] = useState(true);
@@ -84,6 +96,18 @@ export default function UGCDrawer({
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgEditing, setOrgEditing] = useState(false);
 
+  // Kernel scrape state
+  const [scrapeLoading, setScrapeLoading] = useState(false);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
+  const [scrapeSuccess, setScrapeSuccess] = useState(false);
+
+  // Profile edit state
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [editNombre, setEditNombre] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editBio, setEditBio] = useState('');
+
   // Pauta form state
   const [pImpresiones, setPImpresiones] = useState('');
   const [pAlcance, setPAlcance] = useState('');
@@ -94,6 +118,11 @@ export default function UGCDrawer({
   const [pautaSaving, setPautaSaving] = useState(false);
   const [pautaEditing, setPautaEditing] = useState(false);
 
+  // Accordions & dropdowns
+  const [scoreBreakdownOpen, setScoreBreakdownOpen] = useState(false);
+  const [calificacionOpen, setCalificacionOpen] = useState(false);
+  const [assignMenuOpen, setAssignMenuOpen] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     async function loadDetail() {
@@ -103,7 +132,6 @@ export default function UGCDrawer({
         if (!cancelled) {
           const merged = { ...ugcProp, ...detail };
           setUgc(merged);
-          // Populate form fields from existing data
           if (merged.evaluacionOrganica) {
             const o = merged.evaluacionOrganica;
             setOrgViews(o.views?.toString() ?? '');
@@ -144,7 +172,46 @@ export default function UGCDrawer({
   const missingOrganica = !ugc.evaluacionOrganica?.completado;
   const missingPauta = !ugc.evaluacionPauta?.completado;
 
+  const followersDisplay = ugc.evaluacionPerfil?.seguidores
+    ? ugc.evaluacionPerfil.seguidores.toLocaleString('es-AR')
+    : ugc.seguidores || null;
+
+  // Campaigns this UGC belongs to (from campaigns' ugcs list)
+  const assignedCampaigns = campanas.filter(c => c.ugcs.some(u => u.ugcId === ugc.id));
+  // Campaigns available to add (not closed, not already assigned)
+  const availableToAssign = campanas.filter(c =>
+    c.estado !== 'Cerrada' && !c.ugcs.some(u => u.ugcId === ugc.id)
+  );
+
+  function startProfileEditing() {
+    setEditNombre(ugc.nombre);
+    setEditUsername(ugc.username ?? '');
+    setEditBio(ugc.bio ?? '');
+    setProfileEditing(true);
+  }
+
   // ── Save handlers ────────────────────────────────────────────────────────
+
+  async function handleSaveProfile() {
+    setProfileSaving(true);
+    try {
+      const updated: UGC = {
+        ...ugc,
+        nombre: editNombre.trim() || ugc.nombre,
+        username: editUsername.trim() || undefined,
+        bio: editBio.trim() || undefined,
+        canal: ugc.canal,
+      };
+      await updateCreator(updated);
+      setUgc(updated);
+      onUpdateUGC(updated);
+      setProfileEditing(false);
+    } catch (err) {
+      console.error('Error saving profile:', err);
+    } finally {
+      setProfileSaving(false);
+    }
+  }
 
   async function handleSaveOrganica() {
     setOrgSaving(true);
@@ -196,6 +263,28 @@ export default function UGCDrawer({
     }
   }
 
+  async function handleScrape() {
+    setScrapeLoading(true);
+    setScrapeError(null);
+    setScrapeSuccess(false);
+    try {
+      const result = await scrapeCreator(ugc.id);
+      if (!result.ok || !result.evaluacionPerfil) {
+        setScrapeError('No se pudo obtener datos del perfil.');
+        return;
+      }
+      const updated: UGC = { ...ugc, evaluacionPerfil: result.evaluacionPerfil };
+      setUgc(updated);
+      onUpdateUGC(updated);
+      setScrapeSuccess(true);
+      setTimeout(() => setScrapeSuccess(false), 3000);
+    } catch (err) {
+      setScrapeError(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setScrapeLoading(false);
+    }
+  }
+
   // ── Tab button ───────────────────────────────────────────────────────────
 
   function TabBtn({ tab, icon: Icon, hasDot }: { tab: DrawerTab; icon: React.ElementType; hasDot?: boolean }) {
@@ -242,36 +331,132 @@ export default function UGCDrawer({
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
           <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-sm ${av}`}>
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <div className={`w-12 h-12 rounded-xl flex-shrink-0 flex items-center justify-center font-bold text-sm ${av}`}>
                 {getInitials(ugc.nombre)}
               </div>
-              <div>
-                <h2 className="text-lg font-bold" style={{ color: 'var(--color-text-1)' }}>{ugc.nombre}</h2>
-                <p className="text-sm" style={{ color: 'var(--color-text-3)' }}>{ugc.bio}</p>
-              </div>
+
+              {profileEditing ? (
+                /* ── Edit mode ── */
+                <div className="flex-1 min-w-0 flex flex-col gap-2">
+                  <input
+                    autoFocus
+                    value={editNombre}
+                    onChange={e => setEditNombre(e.target.value)}
+                    placeholder="Nombre completo"
+                    className="w-full px-2.5 py-1.5 rounded-lg border text-sm font-semibold focus:outline-none transition-all"
+                    style={{ backgroundColor: 'var(--color-surface-alt)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
+                    onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; }}
+                  />
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>@</span>
+                    <input
+                      value={editUsername}
+                      onChange={e => setEditUsername(e.target.value.replace(/^@/, ''))}
+                      placeholder="handle_de_instagram"
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border text-sm font-mono focus:outline-none transition-all"
+                      style={{ backgroundColor: 'var(--color-surface-alt)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
+                      onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; }}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-3)' }}>Descripción</label>
+                    <textarea
+                      value={editBio}
+                      onChange={e => setEditBio(e.target.value)}
+                      placeholder="Notas internas sobre este UGC..."
+                      rows={3}
+                      className="w-full px-2.5 py-1.5 rounded-lg border text-xs focus:outline-none transition-all resize-none"
+                      style={{ backgroundColor: 'var(--color-surface-alt)', borderColor: 'var(--color-border)', color: 'var(--color-text-2)' }}
+                      onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; }}
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-0.5">
+                    <button
+                      onClick={() => setProfileEditing(false)}
+                      className="px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200"
+                      style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface-alt)' }}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleSaveProfile}
+                      disabled={profileSaving}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-all duration-200 disabled:opacity-40"
+                      style={{ backgroundColor: 'var(--color-brand)' }}
+                    >
+                      {profileSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* ── Display mode ── */
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <h2 className="text-lg font-bold leading-tight" style={{ color: 'var(--color-text-1)' }}>{ugc.nombre}</h2>
+                    <button
+                      onClick={startProfileEditing}
+                      title="Editar perfil"
+                      className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-lg transition-all duration-200"
+                      style={{ color: 'var(--color-text-3)' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
+                  {(ugc.username || followersDisplay) && (
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      {ugc.username && (
+                        <span className="text-xs font-mono" style={{ color: 'var(--color-text-2)' }}>@{ugc.username}</span>
+                      )}
+                      {followersDisplay && (
+                        <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>
+                          {ugc.username && '· '}{followersDisplay} seguidores
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {ugc.bio && (
+                    <p className="text-sm mt-0.5 line-clamp-1" style={{ color: 'var(--color-text-3)' }}>{ugc.bio}</p>
+                  )}
+                </div>
+              )}
             </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200"
-              style={{ color: 'var(--color-text-3)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
-            >
-              <X className="w-4 h-4" />
-            </button>
+
+            {/* Header actions: Ir al chat + Close */}
+            <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+              <button
+                onClick={() => onGoToChat(ugc)}
+                title="Ir al chat con este UGC"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-all duration-200"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface-alt)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-2)'; }}
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span className="hidden sm:block">Chat</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200"
+                style={{ color: 'var(--color-text-3)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap mb-4">
             <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${estadoConfig.className}`}>
               {estadoConfig.label}
             </span>
-            {ugc.seguidores && (
-              <span className="px-2.5 py-1 rounded-md text-xs font-mono font-medium border"
-                style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-2)', borderColor: 'var(--color-border)' }}>
-                {ugc.seguidores} seguidores
-              </span>
-            )}
             {needsInfoUpdate(ugc) && (
               <span className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-semibold border"
                 style={{ backgroundColor: 'rgba(252,154,0,0.08)', borderColor: 'rgba(252,154,0,0.25)', color: 'var(--color-brand)' }}>
@@ -281,17 +466,62 @@ export default function UGCDrawer({
             )}
           </div>
 
-          {/* Score */}
-          <div className="p-3 rounded-xl" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-2)' }}>Score total</span>
-              <span className={`font-mono font-bold text-lg ${sc.text}`}>{ugc.score}</span>
-            </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
-              <div
-                className={`h-full ${sc.bar} rounded-full transition-all duration-700`}
-                style={{ width: `${ugc.score}%` }}
-              />
+          {/* Score — clickable, expands breakdown */}
+          <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
+            <button
+              onClick={() => ugc.scoreBreakdown?.length && setScoreBreakdownOpen(o => !o)}
+              className="w-full p-3 text-left"
+              style={{ cursor: ugc.scoreBreakdown?.length ? 'pointer' : 'default' }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-2)' }}>Score total</span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`font-mono font-bold text-lg ${sc.text}`}>{ugc.score}</span>
+                  {!!ugc.scoreBreakdown?.length && (
+                    <ChevronDown
+                      className="w-3.5 h-3.5 transition-transform duration-300"
+                      style={{
+                        color: 'var(--color-text-3)',
+                        transform: scoreBreakdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+              <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                <div
+                  className={`h-full ${sc.bar} rounded-full transition-all duration-700`}
+                  style={{ width: `${ugc.score}%` }}
+                />
+              </div>
+            </button>
+
+            {/* Animated breakdown */}
+            <div
+              style={{
+                maxHeight: scoreBreakdownOpen ? '320px' : '0',
+                overflow: 'hidden',
+                transition: 'max-height 0.32s ease-in-out',
+              }}
+            >
+              <div className="px-3 pb-3 pt-1 space-y-2.5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                {(ugc.scoreBreakdown || []).map((s, i) => (
+                  <div key={i}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-xs" style={{ color: 'var(--color-text-2)' }}>{s.criterio}</span>
+                      <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-1)' }}>
+                        {s.puntos}<span style={{ color: 'var(--color-text-3)' }}>/{s.maximo}</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                      <div
+                        className={`h-full ${scoreColor(totalScore).bar} rounded-full transition-all duration-500`}
+                        style={{ width: `${(s.puntos / s.maximo) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -316,144 +546,224 @@ export default function UGCDrawer({
               {/* ── TAB: PERFIL ──────────────────────────────────────────── */}
               {activeTab === 'Perfil' && (
                 <>
-                  {/* Last scrape info */}
+                  {/* ── KERNEL DATA section ── */}
                   <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-3)' }}>
-                      <RefreshCw className="w-3 h-3" />
-                      Datos de Kernel
-                    </h3>
-                    {ugc.evaluacionPerfil ? (
-                      <>
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold"
-                            style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: 'rgb(22,163,74)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>
+                          Datos del perfil
+                        </h3>
+                        {ugc.evaluacionPerfil && (
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-md font-semibold"
+                            style={{ backgroundColor: 'rgba(20,184,166,0.1)', color: 'rgb(13,148,136)', border: '1px solid rgba(20,184,166,0.2)' }}
+                          >
                             Actualizado {formatLastScraped(ugc.evaluacionPerfil.lastScrapedAt)}
                           </span>
-                        </div>
-                        <div className="rounded-xl p-3" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
+                        )}
+                      </div>
+                      <button
+                        onClick={handleScrape}
+                        disabled={scrapeLoading}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all duration-200 disabled:opacity-50"
+                        style={{
+                          borderColor: scrapeSuccess ? 'rgba(34,197,94,0.4)' : 'var(--color-border)',
+                          backgroundColor: scrapeSuccess ? 'rgba(34,197,94,0.08)' : 'var(--color-surface-alt)',
+                          color: scrapeSuccess ? 'rgb(22,163,74)' : 'var(--color-text-2)',
+                        }}
+                      >
+                        {scrapeLoading
+                          ? <><Loader2 className="w-3 h-3 animate-spin" />Evaluando...</>
+                          : scrapeSuccess
+                            ? <><CheckCircle2 className="w-3 h-3" />Actualizado</>
+                            : <><RefreshCw className="w-3 h-3" />Evaluar ahora</>
+                        }
+                      </button>
+                    </div>
+                    {scrapeError && (
+                      <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-xl border"
+                        style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.2)' }}>
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />
+                        <p className="text-[11px] text-rose-600">{scrapeError}</p>
+                      </div>
+                    )}
+                    {ugc.evaluacionPerfil ? (
+                      <>
+                        <div className="rounded-xl p-3 border" style={{ backgroundColor: 'rgba(20,184,166,0.03)', borderColor: 'rgba(20,184,166,0.15)' }}>
                           <MetricRow label="Handle" value={ugc.evaluacionPerfil.perfil} />
                           <MetricRow label="Seguidores" value={ugc.evaluacionPerfil.seguidores.toLocaleString('es-AR')} />
                           <MetricRow label="Engagement Rate Cuenta" value={ugc.evaluacionPerfil.engagementRateCuenta} unit="%" />
-                          <MetricRow label="Promedio vistas (últimos 5 videos)" value={ugc.evaluacionPerfil.promedioVistaVideos.toLocaleString('es-AR')} />
+                          <MetricRow label="Promedio vistas (últimos 5 videos)" value={ugc.evaluacionPerfil.promedioVistaVideos?.toLocaleString('es-AR')} />
                           <MetricRow label="Categoría" value={ugc.evaluacionPerfil.categoria} />
                           <MetricRow label="Rango de edad seguidores" value={ugc.evaluacionPerfil.rangoEdadSeguidores} />
                         </div>
                       </>
                     ) : (
                       <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border"
-                        style={{ backgroundColor: 'rgba(252,154,0,0.06)', borderColor: 'rgba(252,154,0,0.2)' }}>
-                        <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />
+                        style={{ backgroundColor: 'rgba(20,184,166,0.04)', borderColor: 'rgba(20,184,166,0.15)' }}>
+                        <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'rgb(13,148,136)' }} />
                         <p className="text-xs" style={{ color: 'var(--color-text-2)' }}>
-                          Sin datos de Kernel — se actualizará al iniciar una campaña con este creador.
+                          Sin datos de Kernel — presioná "Evaluar ahora" para analizar el perfil.
                         </p>
                       </div>
                     )}
                   </div>
 
-                  {/* Score Breakdown */}
-                  {ugc.scoreBreakdown && ugc.scoreBreakdown.length > 0 && (
-                    <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-3)' }}>
-                        <TrendingUp className="w-3 h-3" />
-                        Desglose del Score
-                      </h3>
-                      <div className="space-y-2.5">
-                        {ugc.scoreBreakdown.map((s, i) => (
-                          <div key={i}>
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-xs" style={{ color: 'var(--color-text-2)' }}>{s.criterio}</span>
-                              <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-1)' }}>
-                                {s.puntos}<span style={{ color: 'var(--color-text-3)' }}>/{s.maximo}</span>
-                              </span>
-                            </div>
-                            <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
-                              <div
-                                className={`h-full ${scoreColor(totalScore).bar} rounded-full transition-all duration-500`}
-                                style={{ width: `${(s.puntos / s.maximo) * 100}%` }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Qualification Q&A */}
+                  {/* ── AI: Respuestas de Calificación (collapsible) ── */}
                   {ugc.calificacion && ugc.calificacion.length > 0 && (
                     <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-3)' }}>
-                        <Award className="w-3 h-3" />
-                        Respuestas de Calificación
-                      </h3>
-                      <div className="space-y-3">
-                        {ugc.calificacion.map((q, i) => (
-                          <div key={i} className="p-3 rounded-xl" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
-                            <p className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: 'var(--color-text-3)' }}>{q.pregunta}</p>
-                            <p className="text-sm" style={{ color: 'var(--color-text-1)' }}>{q.respuesta}</p>
-                          </div>
-                        ))}
+                      <button
+                        onClick={() => setCalificacionOpen(!calificacionOpen)}
+                        className="w-full flex items-center justify-between group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider flex-shrink-0"
+                            style={{ backgroundColor: 'rgba(139,92,246,0.1)', color: 'rgb(109,40,217)', border: '1px solid rgba(139,92,246,0.2)' }}
+                          >
+                            IA
+                          </span>
+                          <h3 className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>
+                            Respuestas de Calificación
+                          </h3>
+                          <span
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded-md"
+                            style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}
+                          >
+                            {ugc.calificacion.length}
+                          </span>
+                        </div>
+                        <ChevronDown
+                          className="w-4 h-4 flex-shrink-0 transition-transform duration-200"
+                          style={{
+                            color: 'var(--color-text-3)',
+                            transform: calificacionOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                          }}
+                        />
+                      </button>
+
+                      <div
+                        style={{
+                          maxHeight: calificacionOpen ? '800px' : '0',
+                          overflow: 'hidden',
+                          transition: 'max-height 0.38s ease-in-out',
+                        }}
+                      >
+                        <div className="mt-3 space-y-2.5">
+                          {ugc.calificacion.map((q, i) => (
+                            <div
+                              key={i}
+                              className="p-3 rounded-xl border"
+                              style={{ backgroundColor: 'rgba(139,92,246,0.03)', borderColor: 'rgba(139,92,246,0.12)' }}
+                            >
+                              <p className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: 'rgb(109,40,217)' }}>{q.pregunta}</p>
+                              <p className="text-sm" style={{ color: 'var(--color-text-1)' }}>{q.respuesta}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Conversation */}
-                  <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-3)' }}>
-                      <MessageCircle className="w-3 h-3" />
-                      Historial de conversación
-                    </h3>
-                    {!ugc.conversacion || ugc.conversacion.length === 0 ? (
-                      <div className="py-6 text-center text-sm italic" style={{ color: 'var(--color-text-3)' }}>Sin mensajes aún</div>
-                    ) : (
-                      <div className="space-y-3">
-                        {ugc.conversacion.map(m => (
-                          <div key={m.id} className={`flex ${m.tipo === 'saliente' ? 'justify-end' : 'justify-start'}`}>
-                            <div
-                              className="max-w-[85%] px-3 py-2 rounded-xl text-sm"
-                              style={m.tipo === 'saliente' ? {
-                                backgroundColor: 'var(--color-brand)', color: '#fff', borderTopRightRadius: '4px',
-                              } : {
-                                backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-1)', borderTopLeftRadius: '4px',
-                              }}
-                            >
-                              <p>{m.texto}</p>
-                              <p className="text-[10px] mt-1" style={{ color: m.tipo === 'saliente' ? 'rgba(255,255,255,0.65)' : 'var(--color-text-3)' }}>
-                                {m.fecha}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Assign to campaign */}
+                  {/* ── Campañas asignadas ── */}
                   {ugc.estado !== 'Descartado' && (
                     <div className="px-6 py-4">
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3" style={{ color: 'var(--color-text-3)' }}>
-                        Asignar a campaña
-                      </h3>
-                      <div className="space-y-2">
-                        {campanas.filter(c => c.estado !== 'Cerrada').map(c => (
-                          <button
-                            key={c.id}
-                            onClick={() => onAsignar(ugc, c.id)}
-                            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-all duration-200"
-                            style={ugc.campanasignada === c.nombre ? {
-                              borderColor: 'var(--color-brand-border)',
-                              backgroundColor: 'var(--color-brand-light)',
-                              color: 'var(--color-brand-hover)',
-                            } : {
-                              borderColor: 'var(--color-border)',
-                              backgroundColor: 'var(--color-surface-alt)',
-                              color: 'var(--color-text-2)',
-                            }}
-                          >
-                            <span className="font-medium">{c.nombre}</span>
-                            <ChevronRight className="w-3.5 h-3.5 opacity-40" />
-                          </button>
-                        ))}
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-3)' }}>
+                          Campañas asignadas
+                        </h3>
+                        {availableToAssign.length > 0 && (
+                          <div className="relative">
+                            <button
+                              onClick={() => setAssignMenuOpen(!assignMenuOpen)}
+                              title="Agregar a campaña"
+                              className="w-6 h-6 flex items-center justify-center rounded-lg border transition-all duration-200"
+                              style={{
+                                borderColor: assignMenuOpen ? 'var(--color-brand)' : 'var(--color-border)',
+                                backgroundColor: assignMenuOpen ? 'var(--color-brand-light)' : 'var(--color-surface-alt)',
+                                color: assignMenuOpen ? 'var(--color-brand)' : 'var(--color-text-2)',
+                              }}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+
+                            {assignMenuOpen && (
+                              <>
+                                {/* Close overlay */}
+                                <div className="fixed inset-0 z-10" onClick={() => setAssignMenuOpen(false)} />
+                                <div
+                                  className="absolute right-0 top-8 z-20 min-w-[220px] rounded-xl border py-1 shadow-xl"
+                                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+                                >
+                                  <p className="text-[10px] font-black uppercase tracking-wider px-3 py-2" style={{ color: 'var(--color-text-3)' }}>
+                                    Agregar a campaña
+                                  </p>
+                                  {availableToAssign.map(c => (
+                                    <button
+                                      key={c.id}
+                                      onClick={() => { onAsignar(ugc, c.id); setAssignMenuOpen(false); }}
+                                      className="w-full flex items-center justify-between px-3 py-2.5 text-sm transition-all duration-200"
+                                      style={{ color: 'var(--color-text-1)' }}
+                                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; }}
+                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
+                                    >
+                                      <span className="font-medium truncate mr-2 text-left">{c.nombre}</span>
+                                      <span
+                                        className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex-shrink-0"
+                                        style={estadoCampanaStyle(c.estado)}
+                                      >
+                                        {c.estado}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
+
+                      {assignedCampaigns.length === 0 ? (
+                        <div
+                          className="py-4 text-center rounded-xl border"
+                          style={{ borderColor: 'var(--color-border)', borderStyle: 'dashed' }}
+                        >
+                          <p className="text-xs italic" style={{ color: 'var(--color-text-3)' }}>No asignado a ninguna campaña</p>
+                          {availableToAssign.length > 0 && (
+                            <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-3)' }}>
+                              Usá el botón + para agregar
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {assignedCampaigns.map(c => {
+                            const ugcInCamp = c.ugcs.find(u => u.ugcId === ugc.id);
+                            return (
+                              <div
+                                key={c.id}
+                                className="flex items-center justify-between px-3 py-2.5 rounded-xl border"
+                                style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-alt)' }}
+                              >
+                                <div className="flex flex-col gap-0.5 min-w-0">
+                                  <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text-1)' }}>{c.nombre}</span>
+                                  {ugcInCamp && (
+                                    <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>
+                                      Estado: {ugcInCamp.estado}
+                                    </span>
+                                  )}
+                                </div>
+                                <span
+                                  className="text-[10px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0 ml-2"
+                                  style={estadoCampanaStyle(c.estado)}
+                                >
+                                  {c.estado}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </>
@@ -479,7 +789,6 @@ export default function UGCDrawer({
                   </div>
 
                   {ugc.evaluacionOrganica?.completado && !orgEditing ? (
-                    // Read mode
                     <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
                       <div className="flex items-center gap-2 px-4 py-2.5 border-b" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-alt)' }}>
                         <CheckCircle2 className="w-4 h-4" style={{ color: 'rgb(22,163,74)' }} />
@@ -493,7 +802,6 @@ export default function UGCDrawer({
                       </div>
                     </div>
                   ) : (
-                    // Edit / empty form
                     <div className="flex flex-col gap-4">
                       {!ugc.evaluacionOrganica?.completado && (
                         <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border"
@@ -565,7 +873,6 @@ export default function UGCDrawer({
                   </div>
 
                   {ugc.evaluacionPauta?.completado && !pautaEditing ? (
-                    // Read mode
                     <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
                       <div className="flex items-center gap-2 px-4 py-2.5 border-b" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-alt)' }}>
                         <CheckCircle2 className="w-4 h-4" style={{ color: 'rgb(22,163,74)' }} />
@@ -581,7 +888,6 @@ export default function UGCDrawer({
                       </div>
                     </div>
                   ) : (
-                    // Edit / empty form
                     <div className="flex flex-col gap-4">
                       {!ugc.evaluacionPauta?.completado && (
                         <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border"

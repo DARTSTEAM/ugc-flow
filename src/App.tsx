@@ -48,6 +48,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dark, setDark] = useDarkMode();
+  const [chatTargetId, setChatTargetId] = useState<string | null>(null);
 
   // ── Load data from API on mount ──────────────────────────────────
   useEffect(() => {
@@ -142,6 +143,11 @@ export default function App() {
   function handleSelectCampana(c: Campana) {
     setSelectedCampana(c);
     setActiveTab('campanas');
+  }
+
+  function handleGoToChat(ugc: UGC) {
+    setChatTargetId(ugc.id);
+    setActiveTab('chats');
   }
 
   async function handleCrearCampana(nueva: Campana) {
@@ -446,6 +452,7 @@ export default function App() {
               onAddUGC={() => {}}
               onUpdateUGC={handleUpdateUGC}
               onDeleteUGC={handleDeleteUGC}
+              onGoToChat={handleGoToChat}
             />
           )}
           {activeTab === 'prospeccion' && (
@@ -455,6 +462,7 @@ export default function App() {
             <ChatsTab
               ugcs={ugcs}
               onUpdateUGC={handleUpdateUGC}
+              initialUgcId={chatTargetId}
             />
           )}
           {activeTab === 'campanas' && !selectedCampana && (

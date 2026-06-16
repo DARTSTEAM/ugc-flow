@@ -28,13 +28,13 @@ export interface RespuestaCalificacion {
 /** Datos extraídos por Kernel al hacer scrape del perfil */
 export interface EvaluacionPerfil {
   nombre: string;
-  perfil: string;                  // handle / @username
+  perfil: string;                         // handle / @username
   seguidores: number;
-  engagementRateCuenta: number;    // % ER de la cuenta
-  promedioVistaVideos: number;     // promedio de vistas de los últimos 5 videos
-  categoria: string;               // nicho / categoría
-  rangoEdadSeguidores: string;     // ej: "18-24", "25-34"
-  lastScrapedAt: string;           // ISO timestamp
+  engagementRateCuenta: number | null;    // null si no hay posts suficientes
+  promedioVistaVideos: number | null;     // null si no hay videos en los últimos 5 posts
+  categoria: string | null;              // null para cuentas personales
+  rangoEdadSeguidores: string | null;    // siempre null — no disponible públicamente
+  lastScrapedAt: string;                 // ISO timestamp
 }
 
 /** Form manual — contenido orgánico. Cada campo pondera 25% del score orgánico */
@@ -60,6 +60,7 @@ export interface EvaluacionPauta {
 export interface UGC {
   id: string;
   nombre: string;
+  username?: string;             // Instagram @handle (used by Kernel scraper)
   canal: Canal;
   estado: EstadoUGC;
   score: number;

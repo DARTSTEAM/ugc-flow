@@ -1,6 +1,8 @@
+import 'dotenv/config'; // loads .env in dev; no-op in Cloud Run where vars are already injected
 import express from 'express';
 import cors from 'cors';
 import { BigQuery } from '@google-cloud/bigquery';
+import { scrapeCreatorProfiles } from './kernel/index.js';
 
 const app = express();
 app.use(cors());
@@ -82,9 +84,39 @@ app.get('/api/creators/:id', async (req, res) => {
     if (!creators.length) return res.status(404).json({ error: 'Not found' });
     const c = creators[0];
 
+    const evalPerfil = c.eval_perfil_seguidores != null ? {
+      nombre: c.eval_perfil_nombre ?? '',
+      perfil: c.eval_perfil_handle ?? c.username ?? '',
+      seguidores: Number(c.eval_perfil_seguidores),
+      engagementRateCuenta: c.eval_perfil_engagement_rate_cuenta != null ? Number(c.eval_perfil_engagement_rate_cuenta) : null,
+      promedioVistaVideos: c.eval_perfil_promedio_vistas != null ? Number(c.eval_perfil_promedio_vistas) : null,
+      categoria: c.eval_perfil_categoria ?? '',
+      rangoEdadSeguidores: c.eval_perfil_rango_edad_seguidores ?? '',
+      lastScrapedAt: c.eval_perfil_last_scraped_at?.value ?? c.eval_perfil_last_scraped_at ?? '',
+    } : undefined;
+
+    const evalOrganica = c.eval_organica_completado ? {
+      views: c.eval_organica_views ?? undefined,
+      shares: c.eval_organica_shares ?? undefined,
+      engagementRate: c.eval_organica_engagement_rate ?? undefined,
+      hookNatural: c.eval_organica_hook_natural ?? undefined,
+      completado: true,
+    } : undefined;
+
+    const evalPauta = c.eval_pauta_completado ? {
+      impresiones: c.eval_pauta_impresiones ?? undefined,
+      alcance: c.eval_pauta_alcance ?? undefined,
+      cpm: c.eval_pauta_cpm ?? undefined,
+      frecuencia: c.eval_pauta_frecuencia ?? undefined,
+      ctr: c.eval_pauta_ctr ?? undefined,
+      vtr: c.eval_pauta_vtr ?? undefined,
+      completado: true,
+    } : undefined;
+
     res.json({
       id: c.creator_id,
       nombre: c.full_name,
+      username: c.username ?? null,
       canal: c.canal || 'Instagram',
       estado: c.estado || 'Nuevo',
       score: c.score || 0,
@@ -92,6 +124,7 @@ app.get('/api/creators/:id', async (req, res) => {
       campanasignada: c.campana_asignada || null,
       seguidores: c.seguidores_display || '',
       bio: c.bio || '',
+      phone: c.phone || '',
       conversacion: messages.map(m => ({
         id: m.message_id,
         tipo: m.tipo,
@@ -107,6 +140,9 @@ app.get('/api/creators/:id', async (req, res) => {
         puntos: s.puntos,
         maximo: s.maximo,
       })),
+      evaluacionPerfil: evalPerfil,
+      evaluacionOrganica: evalOrganica,
+      evaluacionPauta: evalPauta,
     });
   } catch (err) {
     console.error('GET /api/creators/:id error:', err);
@@ -118,15 +154,16 @@ app.get('/api/creators/:id', async (req, res) => {
 app.put('/api/creators/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, canal, estado, score, bio, campanasignada, seguidores } = req.body;
+    const { nombre, canal, estado, score, bio, campanasignada, seguidores, username } = req.body;
 
     await q(`
       UPDATE ${DATASET}.creators SET
         full_name = @nombre, canal = @canal, estado = @estado,
         score = @score, bio = @bio, campana_asignada = @campanasignada,
-        seguidores_display = @seguidores, updated_at = CURRENT_TIMESTAMP()
+        seguidores_display = @seguidores, username = @username,
+        updated_at = CURRENT_TIMESTAMP()
       WHERE creator_id = @id
-    `, { id, nombre, canal, estado, score: score || 0, bio: bio || '', campanasignada: campanasignada || '', seguidores: seguidores || '' });
+    `, { id, nombre, canal, estado, score: score || 0, bio: bio || '', campanasignada: campanasignada || '', seguidores: seguidores || '', username: username || null });
 
     res.json({ ok: true });
   } catch (err) {
@@ -308,6 +345,73 @@ app.patch('/api/creators/:id/evaluacion-pauta', async (req, res) => {
   } catch (err) {
     console.error('PATCH /api/creators/:id/evaluacion-pauta error:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/creators/:id/scrape ──────────────────────────────────
+// Triggers a Kernel scrape for a single creator and returns updated eval_perfil data.
+app.post('/api/creators/:id/scrape', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await scrapeCreatorProfiles([id]);
+
+    if (result.failed.length) {
+      return res.status(422).json({ ok: false, error: result.failed[0]?.reason, durationMs: result.durationMs });
+    }
+
+    // Re-fetch updated eval_perfil fields to return fresh data
+    const [rows] = await bq.query({
+      query: `
+        SELECT eval_perfil_nombre, eval_perfil_handle, eval_perfil_seguidores,
+               eval_perfil_engagement_rate_cuenta, eval_perfil_promedio_vistas,
+               eval_perfil_categoria, eval_perfil_rango_edad_seguidores, eval_perfil_last_scraped_at
+        FROM ${DATASET}.creators WHERE creator_id = @id
+      `,
+      params: { id },
+      location: 'US',
+    });
+
+    const c = rows[0] ?? {};
+    const evaluacionPerfil = c.eval_perfil_seguidores != null ? {
+      nombre: c.eval_perfil_nombre ?? '',
+      perfil: c.eval_perfil_handle ?? '',
+      seguidores: Number(c.eval_perfil_seguidores),
+      engagementRateCuenta: c.eval_perfil_engagement_rate_cuenta != null ? Number(c.eval_perfil_engagement_rate_cuenta) : null,
+      promedioVistaVideos: c.eval_perfil_promedio_vistas != null ? Number(c.eval_perfil_promedio_vistas) : null,
+      categoria: c.eval_perfil_categoria ?? '',
+      rangoEdadSeguidores: c.eval_perfil_rango_edad_seguidores ?? '',
+      lastScrapedAt: c.eval_perfil_last_scraped_at?.value ?? c.eval_perfil_last_scraped_at ?? '',
+    } : null;
+
+    res.json({ ok: true, evaluacionPerfil, durationMs: result.durationMs });
+  } catch (err) {
+    console.error('POST /api/creators/:id/scrape error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── POST /api/campaigns/:id/scrape-creators ────────────────────────
+// Triggers a Kernel batch scrape for all creators assigned to a campaign.
+app.post('/api/campaigns/:id/scrape-creators', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [ccRows] = await bq.query({
+      query: `SELECT DISTINCT creator_id FROM ${DATASET}.campaign_creators WHERE campaign_id = @id`,
+      params: { id },
+      location: 'US',
+    });
+
+    const creatorIds = ccRows.map(r => r.creator_id).filter(Boolean);
+    if (!creatorIds.length) {
+      return res.json({ ok: true, success: [], failed: [], durationMs: 0 });
+    }
+
+    const result = await scrapeCreatorProfiles(creatorIds);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('POST /api/campaigns/:id/scrape-creators error:', err);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

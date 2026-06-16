@@ -1,4 +1,4 @@
-import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta } from './data';
+import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil } from './data';
 
 const BASE = '/api';
 
@@ -32,6 +32,7 @@ export async function updateCreator(ugc: UGC): Promise<void> {
       bio: ugc.bio,
       campanasignada: ugc.campanasignada,
       seguidores: ugc.seguidores,
+      username: ugc.username,
     }),
   });
 }
@@ -99,4 +100,18 @@ export async function updateCampaignMensaje(id: string, mensajeContacto: string)
 /** Placeholder — will trigger n8n/Evolution API in Sprint 2 */
 export async function sendCampaignMessage(id: string): Promise<void> {
   await json(`/campaigns/${id}/send-message`, { method: 'POST' });
+}
+
+// ─── Kernel Scraping ────────────────────────────────────────────────
+
+export async function scrapeCreator(
+  id: string
+): Promise<{ ok: boolean; evaluacionPerfil: EvaluacionPerfil | null; durationMs: number }> {
+  return json(`/creators/${id}/scrape`, { method: 'POST' });
+}
+
+export async function scrapeCreatorsByCampaign(
+  campaignId: string
+): Promise<{ ok: boolean; success: string[]; failed: Array<{ id: string; reason: string }>; durationMs: number }> {
+  return json(`/campaigns/${campaignId}/scrape-creators`, { method: 'POST' });
 }

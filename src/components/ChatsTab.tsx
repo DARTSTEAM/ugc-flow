@@ -9,6 +9,7 @@ import { avatarColor, getInitials } from '../utils';
 interface Props {
   ugcs: UGC[];
   onUpdateUGC: (ugc: UGC) => void;
+  initialUgcId?: string | null;
 }
 
 const CANAL_CONFIG: Record<string, { icon: React.ComponentType<any>; color: string; label: string; bg: string; border: string }> = {
@@ -50,8 +51,12 @@ function getUgcLastMsgTime(u: UGC): number {
   return 0; // very old fallback
 }
 
-export default function ChatsTab({ ugcs, onUpdateUGC }: Props) {
-  const [selectedUgcId, setSelectedUgcId] = useState<string | null>(null);
+export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
+  const [selectedUgcId, setSelectedUgcId] = useState<string | null>(initialUgcId ?? null);
+
+  useEffect(() => {
+    if (initialUgcId) setSelectedUgcId(initialUgcId);
+  }, [initialUgcId]);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'unread'>('all');
   const [inputText, setInputText] = useState('');

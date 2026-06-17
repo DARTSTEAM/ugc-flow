@@ -13,7 +13,7 @@ interface Props {
   ugcs: UGC[];
 }
 
-const MARCAS = ['Popeyes', 'Dunkin', 'Papa Johns', 'Bembos', 'Chinawok'];
+const MARCAS = ['Popeyes', "Dunkin'", "Papa John's", 'Bembos', 'Chinawok', 'Don Belisario'];
 
 const DEFAULT_QUESTIONS = [
   '¿Cuál es tu edad?',

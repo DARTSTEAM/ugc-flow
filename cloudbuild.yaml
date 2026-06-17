@@ -1,33 +1,33 @@
+# CI/CD is handled via GitHub Actions (.github/workflows/deploy.yml)
+# This file is kept for manual Cloud Build runs only.
 steps:
-  # Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - build
       - '-t'
-      - 'gcr.io/$PROJECT_ID/ugc-flow:$COMMIT_SHA'
+      - 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/ugc-flow:latest'
+      - 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:latest'
       - '.'
 
-  # Push to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/ugc-flow']
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow']
 
-  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - run
       - deploy
       - ugc-flow
-      - '--image=gcr.io/$PROJECT_ID/ugc-flow:$COMMIT_SHA'
+      - '--image=us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
       - '--region=us-central1'
       - '--platform=managed'
       - '--allow-unauthenticated'
+      - '--project=hike-agentic-playground'
 
 images:
-  - 'gcr.io/$PROJECT_ID/ugc-flow:$COMMIT_SHA'
-  - 'gcr.io/$PROJECT_ID/ugc-flow:latest'
+  - 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
+  - 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

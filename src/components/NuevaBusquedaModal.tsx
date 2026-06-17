@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { X, Sparkles, Hash } from 'lucide-react';
+import instagramLogo from '../assets/instagram-logo.png';
+import tiktokLogo from '../assets/tiktok-logo.png';
+import youtubeLogo from '../assets/youtube-logo.png';
 
 type Plataforma = 'Instagram' | 'TikTok' | 'YouTube';
 
@@ -10,10 +13,10 @@ const NICHOS_DISPONIBLES = [
   'DIY', 'Hogar', 'Educación', 'Negocios', 'Arte',
 ];
 
-const PLATAFORMA_CFG: Record<Plataforma, { icon: string; activeText: string; activeBg: string; activeBorder: string }> = {
-  Instagram: { icon: '📸', activeText: '#7c3aed', activeBg: 'rgba(124,58,237,0.07)', activeBorder: '#c4b5fd' },
-  TikTok:    { icon: '🎵', activeText: 'var(--color-text-1)', activeBg: 'rgba(0,0,0,0.05)', activeBorder: 'var(--color-border)' },
-  YouTube:   { icon: '🎬', activeText: '#dc2626', activeBg: 'rgba(220,38,38,0.06)', activeBorder: '#fca5a5' },
+const PLATAFORMA_CFG: Record<Plataforma, { logo: string; activeText: string; activeBg: string; activeBorder: string }> = {
+  Instagram: { logo: instagramLogo, activeText: '#7c3aed', activeBg: 'rgba(124,58,237,0.07)', activeBorder: '#c4b5fd' },
+  TikTok:    { logo: tiktokLogo,    activeText: 'var(--color-text-1)', activeBg: 'rgba(0,0,0,0.05)', activeBorder: 'var(--color-border)' },
+  YouTube:   { logo: youtubeLogo,   activeText: '#dc2626', activeBg: 'rgba(220,38,38,0.06)', activeBorder: '#fca5a5' },
 };
 
 function inputStyle(focused: boolean) {
@@ -165,7 +168,7 @@ export default function NuevaBusquedaModal({ onClose }: Props) {
                       borderColor: active ? cfg.activeBorder : 'var(--color-border-subtle)',
                     }}
                   >
-                    <span className="text-3xl">{cfg.icon}</span>
+                    <img src={cfg.logo} alt={p} className="w-10 h-10 object-contain" />
                     <span className="text-xs font-bold" style={{ color: active ? cfg.activeText : 'var(--color-text-2)' }}>
                       {p}
                     </span>

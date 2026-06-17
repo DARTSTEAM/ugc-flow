@@ -127,13 +127,11 @@ export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }:
   const [filter, setFilter]           = useState<FilterCampana>('Todas');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const sorted = [...campanas].sort((a, b) => b.fechaInicio.localeCompare(a.fechaInicio));
-
   const filtered =
-    filter === 'Todas'      ? sorted :
-    filter === 'Activas'    ? sorted.filter(c => c.estado === 'Activa' || c.estado === 'Pausada') :
-    filter === 'Borradores' ? sorted.filter(c => c.estado === 'Borrador') :
-                              sorted.filter(c => c.estado === 'Cerrada');
+    filter === 'Todas'      ? campanas :
+    filter === 'Activas'    ? campanas.filter(c => c.estado === 'Activa' || c.estado === 'Pausada') :
+    filter === 'Borradores' ? campanas.filter(c => c.estado === 'Borrador') :
+                              campanas.filter(c => c.estado === 'Cerrada');
 
   const paged   = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
@@ -249,7 +247,7 @@ export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }:
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             {paged.map(c => {
               const colors = CAMPANA_CARD_COLORS[c.estado];
               return (

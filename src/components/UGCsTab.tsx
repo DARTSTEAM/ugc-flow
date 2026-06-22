@@ -260,20 +260,36 @@ interface FiltrosModalProps {
   filterEstado: EstadoUGC | '';
   scoreMin: number;
   scoreMax: number;
-  onApply: (estado: EstadoUGC | '', min: number, max: number) => void;
+  filterEtiquetas: string[];
+  availableEtiquetas: string[];
+  onApply: (estado: EstadoUGC | '', min: number, max: number, etiquetas: string[]) => void;
   onClose: () => void;
 }
 
-function FiltrosModal({ filterEstado, scoreMin, scoreMax, onApply, onClose }: FiltrosModalProps) {
+function FiltrosModal({ filterEstado, scoreMin, scoreMax, filterEtiquetas, availableEtiquetas, onApply, onClose }: FiltrosModalProps) {
   const [localEstado, setLocalEstado] = useState<EstadoUGC | ''>(filterEstado);
   const [localMin, setLocalMin] = useState(scoreMin);
   const [localMax, setLocalMax] = useState(scoreMax);
-  const focusHandlers = useInputFocus();
+  const [localEtiquetas, setLocalEtiquetas] = useState<string[]>(filterEtiquetas);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [freshEtiquetas, setFreshEtiquetas] = useState<string[]>(availableEtiquetas);
 
-  const hasChanges = localEstado !== '' || localMin > 0 || localMax < 100;
+  useEffect(() => {
+    fetch('/api/etiquetas')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const merged = [...new Set([...data, ...availableEtiquetas])].sort();
+          setFreshEtiquetas(merged);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const hasChanges = localEstado !== '' || localMin > 0 || localMax < 100 || localEtiquetas.length > 0;
 
   function handleApply() {
-    onApply(localEstado, localMin, localMax);
+    onApply(localEstado, localMin, localMax, localEtiquetas);
     onClose();
   }
 
@@ -281,6 +297,13 @@ function FiltrosModal({ filterEstado, scoreMin, scoreMax, onApply, onClose }: Fi
     setLocalEstado('');
     setLocalMin(0);
     setLocalMax(100);
+    setLocalEtiquetas([]);
+  }
+
+  function toggleEtiqueta(tag: string) {
+    setLocalEtiquetas(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
   }
 
   return (
@@ -331,6 +354,120 @@ function FiltrosModal({ filterEstado, scoreMin, scoreMax, onApply, onClose }: Fi
             onChangeMax={v => setLocalMax(v)}
           />
         </Field>
+
+        {/* Etiquetas — multi-select dropdown */}
+        <Field label="Etiquetas">
+            {/* Trigger */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setDropdownOpen(o => !o)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-all duration-150"
+                style={{
+                  borderColor: dropdownOpen ? 'var(--color-brand)' : 'var(--color-border)',
+                  backgroundColor: 'var(--color-surface-alt)',
+                  color: localEtiquetas.length > 0 ? 'var(--color-text-1)' : 'var(--color-text-3)',
+                  boxShadow: dropdownOpen ? '0 0 0 3px rgba(252,154,0,0.12)' : 'none',
+                }}
+              >
+                <span>
+                  {localEtiquetas.length === 0
+                    ? 'Seleccionar etiquetas...'
+                    : `${localEtiquetas.length} etiqueta${localEtiquetas.length !== 1 ? 's' : ''} seleccionada${localEtiquetas.length !== 1 ? 's' : ''}`}
+                </span>
+                <ChevronDown
+                  className="w-4 h-4 flex-shrink-0 transition-transform duration-200"
+                  style={{
+                    color: 'var(--color-text-3)',
+                    transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  }}
+                />
+              </button>
+
+              {/* Dropdown list */}
+              {dropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setDropdownOpen(false)} />
+                  <div
+                    className="absolute left-0 right-0 z-20 mt-1 rounded-xl border shadow-lg overflow-hidden"
+                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', maxHeight: '200px', overflowY: 'auto' }}
+                  >
+                    {localEtiquetas.length > 0 && (
+                      <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-3)' }}>
+                          {localEtiquetas.length} seleccionada{localEtiquetas.length !== 1 ? 's' : ''}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setLocalEtiquetas([])}
+                          className="text-[10px] underline"
+                          style={{ color: 'var(--color-text-3)' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-danger)'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'}
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+                    )}
+                    {freshEtiquetas.map(tag => {
+                      const checked = localEtiquetas.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleEtiqueta(tag)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left transition-colors duration-100"
+                          style={{
+                            backgroundColor: checked ? 'var(--color-brand-light)' : 'transparent',
+                            color: checked ? 'var(--color-brand-hover)' : 'var(--color-text-1)',
+                          }}
+                          onMouseEnter={e => { if (!checked) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; }}
+                          onMouseLeave={e => { if (!checked) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                        >
+                          <span
+                            className="w-4 h-4 rounded flex-shrink-0 border flex items-center justify-center transition-all"
+                            style={{
+                              borderColor: checked ? 'var(--color-brand)' : 'var(--color-border)',
+                              backgroundColor: checked ? 'var(--color-brand)' : 'transparent',
+                            }}
+                          >
+                            {checked && (
+                              <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none">
+                                <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </span>
+                          <span className="font-medium">{tag}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Selected chips */}
+            {localEtiquetas.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {localEtiquetas.map(tag => (
+                  <span
+                    key={tag}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold"
+                    style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', border: '1px solid var(--color-brand-border)' }}
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => toggleEtiqueta(tag)}
+                      className="ml-0.5 hover:opacity-70"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </Field>
 
       </div>
 
@@ -556,20 +693,36 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
   const [filterEstado, setFilterEstado] = useState<EstadoUGC | ''>('');
   const [scoreMin, setScoreMin] = useState(0);
   const [scoreMax, setScoreMax] = useState(100);
+  const [filterEtiquetas, setFilterEtiquetas] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selectedUGC, setSelectedUGC] = useState<UGC | null>(null);
   const [showFiltrosModal, setShowFiltrosModal] = useState(false);
   const [showNuevoCreadorModal, setShowNuevoCreadorModal] = useState(false);
 
-  const hasActiveFilters = filterEstado !== '' || scoreMin > 0 || scoreMax < 100;
+  const hasActiveFilters = filterEstado !== '' || scoreMin > 0 || scoreMax < 100 || filterEtiquetas.length > 0;
+
+  const [serverEtiquetas, setServerEtiquetas] = useState<string[]>([]);
+  useEffect(() => {
+    fetch('/api/etiquetas')
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setServerEtiquetas(data); })
+      .catch(() => {});
+  }, []);
+
+  const allEtiquetas = useMemo(() => {
+    const set = new Set<string>(serverEtiquetas);
+    ugcs.forEach(u => u.etiquetas?.forEach(e => set.add(e)));
+    return [...set].sort();
+  }, [ugcs, serverEtiquetas]);
 
   const filtered = useMemo(() => {
     let list = ugcs.filter(u => {
       const matchSearch = u.nombre.toLowerCase().includes(search.toLowerCase());
       const matchEstado = !filterEstado || u.estado === filterEstado;
       const matchScore = u.score >= scoreMin && u.score <= scoreMax;
-      return matchSearch && matchEstado && matchScore;
+      const matchEtiqueta = filterEtiquetas.length === 0 || filterEtiquetas.some(e => u.etiquetas?.includes(e));
+      return matchSearch && matchEstado && matchScore && matchEtiqueta;
     });
 
     list = [...list].sort((a, b) => {
@@ -582,7 +735,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
     });
 
     return list;
-  }, [ugcs, search, filterEstado, scoreMin, scoreMax, sortKey, sortDir]);
+  }, [ugcs, search, filterEstado, scoreMin, scoreMax, filterEtiquetas, sortKey, sortDir]);
 
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -592,21 +745,6 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
   function SortIcon({ col }: { col: SortKey }) {
     if (sortKey !== col) return <ChevronsUpDown className="w-3 h-3 opacity-30" />;
     return sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
-  }
-
-  const ESTADO_ORDER: EstadoUGC[] = ['Nuevo', 'Contactado', 'Respondió', 'Calificado', 'Descartado'];
-
-  function handleAvanzar(ugc: UGC) {
-    const idx = ESTADO_ORDER.indexOf(ugc.estado);
-    if (idx < ESTADO_ORDER.length - 2) {
-      onUpdateUGC({ ...ugc, estado: ESTADO_ORDER[idx + 1] });
-      setSelectedUGC({ ...ugc, estado: ESTADO_ORDER[idx + 1] });
-    }
-  }
-
-  function handleDescartar(ugc: UGC) {
-    onUpdateUGC({ ...ugc, estado: 'Descartado' });
-    setSelectedUGC({ ...ugc, estado: 'Descartado' });
   }
 
   function handleAsignar(ugc: UGC, campanaId: string) {
@@ -698,6 +836,15 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
               </button>
             </span>
           )}
+          {filterEtiquetas.map(tag => (
+            <span key={tag} className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border"
+              style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)', color: 'var(--color-brand-hover)' }}>
+              #{tag}
+              <button onClick={() => setFilterEtiquetas(prev => prev.filter(t => t !== tag))} className="ml-0.5 hover:opacity-70">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
         </div>
       )}
 
@@ -745,7 +892,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
                         <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>No se encontraron creadores con estos filtros</p>
                       </div>
                       <button
-                        onClick={() => { setSearch(''); setFilterEstado(''); setScoreMin(0); setScoreMax(100); }}
+                        onClick={() => { setSearch(''); setFilterEstado(''); setScoreMin(0); setScoreMax(100); setFilterEtiquetas([]); }}
                         className="text-xs font-semibold underline"
                         style={{ color: 'var(--color-brand)' }}
                       >
@@ -866,10 +1013,13 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
           filterEstado={filterEstado}
           scoreMin={scoreMin}
           scoreMax={scoreMax}
-          onApply={(estado, min, max) => {
+          filterEtiquetas={filterEtiquetas}
+          availableEtiquetas={allEtiquetas}
+          onApply={(estado, min, max, etiquetas) => {
             setFilterEstado(estado);
             setScoreMin(min);
             setScoreMax(max);
+            setFilterEtiquetas(etiquetas);
           }}
           onClose={() => setShowFiltrosModal(false)}
         />
@@ -888,8 +1038,6 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
           ugc={selectedUGC}
           campanas={campanas}
           onClose={() => setSelectedUGC(null)}
-          onAvanzar={handleAvanzar}
-          onDescartar={handleDescartar}
           onAsignar={handleAsignar}
           onUpdateUGC={onUpdateUGC}
           onGoToChat={ugc => { setSelectedUGC(null); onGoToChat?.(ugc); }}

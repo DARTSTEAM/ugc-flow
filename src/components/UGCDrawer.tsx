@@ -1,28 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  X, MessageCircle, TrendingUp, Award, ChevronRight, Send,
+  X, MessageCircle, TrendingUp, Award, ChevronRight,
   Loader2, RefreshCw, AlertTriangle, CheckCircle2, BarChart2, Tv2, Pencil,
-  ChevronDown, Plus,
+  ChevronDown, Plus, HelpCircle, Megaphone,
 } from 'lucide-react';
-import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta } from '../data';
+import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EstadoUGC } from '../data';
+import tiktokLogo from '../assets/tiktok-logo.png';
+import instagramLogo from '../assets/instagram-logo.png';
 import { scoreColor, ESTADO_UGC_CONFIG, getInitials, avatarColor, needsInfoUpdate, formatLastScraped } from '../utils';
-import { fetchCreatorDetail, updateCreator, updateEvaluacionOrganica, updateEvaluacionPauta, scrapeCreator } from '../api';
+import { fetchCreatorDetail, updateCreator, updateEtiquetas, updateEvaluacionOrganica, updateEvaluacionPauta, scrapeCreator, scrapeTikTokCreator } from '../api';
 
-type DrawerTab = 'Perfil' | 'Contenido Orgánico' | 'Pauta';
+type DrawerTab = 'Perfil' | 'Contenido Orgánico' | 'Pauta' | 'Campañas';
 
 interface Props {
   ugc: UGC;
   campanas: Campana[];
   initialTab?: DrawerTab;
   onClose: () => void;
-  onAvanzar: (ugc: UGC) => void;
-  onDescartar: (ugc: UGC) => void;
   onAsignar: (ugc: UGC, campanaId: string) => void;
   onUpdateUGC: (ugc: UGC) => void;
   onGoToChat: (ugc: UGC) => void;
 }
-
-const ESTADO_ORDER = ['Nuevo', 'Contactado', 'Respondió', 'Calificado', 'Descartado'] as const;
 
 function estadoCampanaStyle(estado: string): React.CSSProperties {
   switch (estado) {
@@ -36,16 +35,58 @@ function estadoCampanaStyle(estado: string): React.CSSProperties {
 
 // ─── Reusable form field ─────────────────────────────────────────────────────
 function FormField({
-  label, value, onChange, type = 'number', placeholder, unit, hint,
+  label, value, onChange, type = 'number', placeholder, unit, hint, tooltip,
 }: {
   label: string; value: string; onChange: (v: string) => void;
-  type?: string; placeholder?: string; unit?: string; hint?: string;
+  type?: string; placeholder?: string; unit?: string; hint?: string; tooltip?: string;
 }) {
+  const [tipVisible, setTipVisible] = useState(false);
+  const [tipPos, setTipPos] = useState({ top: 0, left: 0 });
+  const iconRef = useRef<HTMLDivElement>(null);
+
+  const showTip = () => {
+    if (!iconRef.current) return;
+    const r = iconRef.current.getBoundingClientRect();
+    setTipPos({ top: r.top - 6, left: r.left + r.width / 2 });
+    setTipVisible(true);
+  };
+
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>
-        {label}{unit && <span className="ml-1 normal-case font-normal opacity-60">({unit})</span>}
-      </label>
+      <div className="flex items-center gap-1">
+        <label className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>
+          {label}{unit && <span className="ml-1 normal-case font-normal opacity-60">({unit})</span>}
+        </label>
+        {tooltip && (
+          <>
+            <div ref={iconRef} onMouseEnter={showTip} onMouseLeave={() => setTipVisible(false)} className="flex items-center">
+              <HelpCircle className="w-2.5 h-2.5 flex-shrink-0" style={{ color: 'var(--color-text-3)' }} />
+            </div>
+            {tipVisible && createPortal(
+              <div style={{
+                position: 'fixed',
+                top: tipPos.top,
+                left: tipPos.left,
+                transform: 'translate(-50%, -100%)',
+                zIndex: 9999,
+                width: '12rem',
+                padding: '6px 9px',
+                borderRadius: '8px',
+                fontSize: '10px',
+                lineHeight: '1.5',
+                pointerEvents: 'none',
+                backgroundColor: 'var(--color-surface)',
+                color: 'var(--color-text-2)',
+                border: '1px solid var(--color-border)',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+              }}>
+                {tooltip}
+              </div>,
+              document.body
+            )}
+          </>
+        )}
+      </div>
       {hint && <p className="text-[10px] italic" style={{ color: 'var(--color-text-3)' }}>{hint}</p>}
       <input
         type={type}
@@ -66,11 +107,97 @@ function FormField({
   );
 }
 
+// ─── Warning icon with hover tooltip (portal) ───────────────────────────────
+function WarnTooltip({ message }: { message: string }) {
+  const [visible, setVisible] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const ref = useRef<HTMLDivElement>(null);
+
+  const show = () => {
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
+    setVisible(true);
+  };
+
+  return (
+    <>
+      <div ref={ref} onMouseEnter={show} onMouseLeave={() => setVisible(false)} className="flex items-center">
+        <AlertTriangle className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+      </div>
+      {visible && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: pos.top,
+          left: pos.left,
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          width: '13rem',
+          padding: '7px 10px',
+          borderRadius: '8px',
+          fontSize: '11px',
+          lineHeight: '1.5',
+          pointerEvents: 'none',
+          backgroundColor: 'var(--color-surface)',
+          color: 'var(--color-text-2)',
+          border: '1px solid rgba(252,154,0,0.35)',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+        }}>
+          {message}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
 // ─── Read-only metric row ────────────────────────────────────────────────────
-function MetricRow({ label, value, unit }: { label: string; value: string | number | null | undefined; unit?: string }) {
+function MetricRow({ label, value, unit, tooltip }: { label: string; value: string | number | null | undefined; unit?: string; tooltip?: string }) {
+  const [visible, setVisible] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const iconRef = useRef<HTMLDivElement>(null);
+
+  const show = () => {
+    if (!iconRef.current) return;
+    const r = iconRef.current.getBoundingClientRect();
+    setPos({ top: r.top - 6, left: r.left + r.width / 2 });
+    setVisible(true);
+  };
+
   return (
     <div className="flex items-center justify-between py-1.5 border-b last:border-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
-      <span className="text-xs" style={{ color: 'var(--color-text-2)' }}>{label}</span>
+      <div className="flex items-center gap-1">
+        <span className="text-xs" style={{ color: 'var(--color-text-2)' }}>{label}</span>
+        {tooltip && (
+          <>
+            <div ref={iconRef} onMouseEnter={show} onMouseLeave={() => setVisible(false)}>
+              <HelpCircle className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--color-text-3)' }} />
+            </div>
+            {visible && createPortal(
+              <div style={{
+                position: 'fixed',
+                top: pos.top,
+                left: pos.left,
+                transform: 'translate(-50%, -100%)',
+                zIndex: 9999,
+                width: '13rem',
+                padding: '7px 10px',
+                borderRadius: '8px',
+                fontSize: '10px',
+                lineHeight: '1.55',
+                pointerEvents: 'none',
+                backgroundColor: 'var(--color-surface)',
+                color: 'var(--color-text-2)',
+                border: '1px solid var(--color-border)',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+              }}>
+                {tooltip}
+              </div>,
+              document.body
+            )}
+          </>
+        )}
+      </div>
       <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-1)' }}>
         {value !== undefined && value !== null && value !== '' ? `${value}${unit ? ` ${unit}` : ''}` : '—'}
       </span>
@@ -82,7 +209,7 @@ function MetricRow({ label, value, unit }: { label: string; value: string | numb
 
 export default function UGCDrawer({
   ugc: ugcProp, campanas, initialTab = 'Perfil',
-  onClose, onAvanzar, onDescartar, onAsignar, onUpdateUGC, onGoToChat,
+  onClose, onAsignar, onUpdateUGC, onGoToChat,
 }: Props) {
   const [ugc, setUgc] = useState<UGC>(ugcProp);
   const [loadingDetail, setLoadingDetail] = useState(true);
@@ -96,10 +223,15 @@ export default function UGCDrawer({
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgEditing, setOrgEditing] = useState(false);
 
-  // Kernel scrape state
+  // Kernel scrape state — Instagram
   const [scrapeLoading, setScrapeLoading] = useState(false);
   const [scrapeError, setScrapeError] = useState<string | null>(null);
   const [scrapeSuccess, setScrapeSuccess] = useState(false);
+
+  // Kernel scrape state — TikTok
+  const [tiktokScrapeLoading, setTiktokScrapeLoading] = useState(false);
+  const [tiktokScrapeError, setTiktokScrapeError] = useState<string | null>(null);
+  const [tiktokScrapeSuccess, setTiktokScrapeSuccess] = useState(false);
 
   // Profile edit state
   const [profileEditing, setProfileEditing] = useState(false);
@@ -107,6 +239,12 @@ export default function UGCDrawer({
   const [editNombre, setEditNombre] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editBio, setEditBio] = useState('');
+  const [editUsernameTiktok, setEditUsernameTiktok] = useState('');
+  const [tagInput, setTagInput] = useState('');
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
+  const [etiquetasLocales, setEtiquetasLocales] = useState<string[]>(ugcProp.etiquetas || []);
+  const etiquetasModified = useRef(false);
+  const [availableEtiquetas, setAvailableEtiquetas] = useState<string[]>([]);
 
   // Pauta form state
   const [pImpresiones, setPImpresiones] = useState('');
@@ -132,6 +270,9 @@ export default function UGCDrawer({
         if (!cancelled) {
           const merged = { ...ugcProp, ...detail };
           setUgc(merged);
+          if (!etiquetasModified.current) {
+            setEtiquetasLocales(merged.etiquetas || []);
+          }
           if (merged.evaluacionOrganica) {
             const o = merged.evaluacionOrganica;
             setOrgViews(o.views?.toString() ?? '');
@@ -157,6 +298,12 @@ export default function UGCDrawer({
       }
     }
     loadDetail();
+    fetch('/api/etiquetas')
+      .then(r => r.json())
+      .then(data => {
+        if (!cancelled && Array.isArray(data)) setAvailableEtiquetas(data);
+      })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [ugcProp.id]);
 
@@ -164,10 +311,25 @@ export default function UGCDrawer({
   const sc = scoreColor(ugc.score);
   const estadoConfig = ESTADO_UGC_CONFIG[ugc.estado];
   const totalScore = (ugc.scoreBreakdown || []).reduce((a, b) => a + b.puntos, 0);
-  const currentIdx = ESTADO_ORDER.indexOf(ugc.estado as typeof ESTADO_ORDER[number]);
-  const nextEstado = currentIdx >= 0 && currentIdx < ESTADO_ORDER.length - 2
-    ? ESTADO_ORDER[currentIdx + 1]
-    : null;
+
+  // Estado dropdown
+  const [estadoOpen, setEstadoOpen] = useState(false);
+  const [estadoPos, setEstadoPos] = useState({ top: 0, left: 0 });
+  const estadoBadgeRef = useRef<HTMLButtonElement>(null);
+
+  function openEstadoDropdown() {
+    if (!estadoBadgeRef.current) return;
+    const r = estadoBadgeRef.current.getBoundingClientRect();
+    setEstadoPos({ top: r.bottom + 4, left: r.left });
+    setEstadoOpen(true);
+  }
+
+  function handleEstadoChange(nuevo: EstadoUGC) {
+    const updated = { ...ugc, estado: nuevo };
+    setUgc(updated);
+    onUpdateUGC(updated);
+    setEstadoOpen(false);
+  }
 
   const missingOrganica = !ugc.evaluacionOrganica?.completado;
   const missingPauta = !ugc.evaluacionPauta?.completado;
@@ -187,7 +349,43 @@ export default function UGCDrawer({
     setEditNombre(ugc.nombre);
     setEditUsername(ugc.username ?? '');
     setEditBio(ugc.bio ?? '');
+    setEditUsernameTiktok(ugc.usernameTiktok ?? '');
     setProfileEditing(true);
+  }
+
+  async function handleAddTag(tag: string) {
+    const trimmed = tag.trim().replace(/^#/, '');
+    if (!trimmed || etiquetasLocales.includes(trimmed)) return;
+    etiquetasModified.current = true;
+    const next = [...etiquetasLocales, trimmed];
+    setEtiquetasLocales(next);
+    setUgc(prev => ({ ...prev, etiquetas: next }));
+    if (!availableEtiquetas.includes(trimmed)) {
+      setAvailableEtiquetas(prev => [...prev, trimmed].sort());
+    }
+    try {
+      await updateEtiquetas(ugc.id, next);
+      onUpdateUGC({ ...ugc, etiquetas: next });
+    } catch (err) {
+      console.error('Error guardando etiqueta:', err);
+      setEtiquetasLocales(etiquetasLocales);
+      setUgc(prev => ({ ...prev, etiquetas: etiquetasLocales }));
+    }
+  }
+
+  async function handleRemoveTag(tag: string) {
+    etiquetasModified.current = true;
+    const next = etiquetasLocales.filter(t => t !== tag);
+    setEtiquetasLocales(next);
+    setUgc(prev => ({ ...prev, etiquetas: next }));
+    try {
+      await updateEtiquetas(ugc.id, next);
+      onUpdateUGC({ ...ugc, etiquetas: next });
+    } catch (err) {
+      console.error('Error eliminando etiqueta:', err);
+      setEtiquetasLocales(prev => [...prev, tag]);
+      setUgc(prev => ({ ...prev, etiquetas: [...(prev.etiquetas || []), tag] }));
+    }
   }
 
   // ── Save handlers ────────────────────────────────────────────────────────
@@ -200,6 +398,7 @@ export default function UGCDrawer({
         nombre: editNombre.trim() || ugc.nombre,
         username: editUsername.trim() || undefined,
         bio: editBio.trim() || undefined,
+        usernameTiktok: editUsernameTiktok.trim() || undefined,
         canal: ugc.canal,
       };
       await updateCreator(updated);
@@ -263,26 +462,53 @@ export default function UGCDrawer({
     }
   }
 
-  async function handleScrape() {
+  async function handleScrapeAll() {
     setScrapeLoading(true);
     setScrapeError(null);
     setScrapeSuccess(false);
-    try {
-      const result = await scrapeCreator(ugc.id);
-      if (!result.ok || !result.evaluacionPerfil) {
-        setScrapeError('No se pudo obtener datos del perfil.');
-        return;
-      }
-      const updated: UGC = { ...ugc, evaluacionPerfil: result.evaluacionPerfil };
-      setUgc(updated);
-      onUpdateUGC(updated);
+    if (ugc.usernameTiktok) {
+      setTiktokScrapeLoading(true);
+      setTiktokScrapeError(null);
+      setTiktokScrapeSuccess(false);
+    }
+
+    let updatedUgc = { ...ugc };
+
+    const [igResult, ttResult] = await Promise.allSettled([
+      scrapeCreator(ugc.id),
+      ugc.usernameTiktok ? scrapeTikTokCreator(ugc.id) : Promise.resolve(null),
+    ]);
+
+    // Instagram result
+    if (igResult.status === 'fulfilled' && igResult.value?.ok && igResult.value.evaluacionPerfil) {
+      updatedUgc = { ...updatedUgc, evaluacionPerfil: igResult.value.evaluacionPerfil };
       setScrapeSuccess(true);
       setTimeout(() => setScrapeSuccess(false), 3000);
-    } catch (err) {
-      setScrapeError(err instanceof Error ? err.message : 'Error desconocido');
-    } finally {
-      setScrapeLoading(false);
+    } else {
+      const reason = igResult.status === 'rejected'
+        ? igResult.reason?.message
+        : 'No se pudo obtener datos de Instagram.';
+      setScrapeError(reason ?? 'Error desconocido');
     }
+    setScrapeLoading(false);
+
+    // TikTok result
+    if (ugc.usernameTiktok) {
+      if (ttResult.status === 'fulfilled' && ttResult.value?.ok && ttResult.value?.evaluacionPerfilTiktok) {
+        updatedUgc = { ...updatedUgc, evaluacionPerfilTiktok: ttResult.value.evaluacionPerfilTiktok };
+        setTiktokScrapeSuccess(true);
+        setTimeout(() => setTiktokScrapeSuccess(false), 3000);
+      } else {
+        const reason = ttResult.status === 'rejected'
+          ? (ttResult.reason as Error)?.message
+          : 'No se pudo obtener datos de TikTok.';
+        setTiktokScrapeError(reason ?? 'Error desconocido');
+      }
+      setTiktokScrapeLoading(false);
+    }
+
+    setUgc(updatedUgc);
+    onUpdateUGC(updatedUgc);
   }
 
   // ── Tab button ───────────────────────────────────────────────────────────
@@ -292,20 +518,29 @@ export default function UGCDrawer({
     return (
       <button
         onClick={() => setActiveTab(tab)}
-        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl transition-all duration-200 relative flex-1 justify-center"
+        className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold transition-all duration-150 relative"
         style={isActive ? {
-          backgroundColor: 'var(--color-brand)',
-          color: '#fff',
+          backgroundColor: 'var(--color-surface)',
+          color: 'var(--color-brand)',
+          borderTop: '1px solid var(--color-border)',
+          borderLeft: '1px solid var(--color-border)',
+          borderRight: '1px solid var(--color-border)',
+          borderBottom: '1px solid var(--color-surface)',
+          borderRadius: '8px 8px 0 0',
+          marginBottom: '-1px',
+          zIndex: 1,
         } : {
-          backgroundColor: 'var(--color-surface-alt)',
-          color: 'var(--color-text-2)',
+          backgroundColor: 'transparent',
+          color: 'var(--color-text-3)',
+          border: '1px solid transparent',
+          borderRadius: '8px 8px 0 0',
         }}
       >
-        <Icon className="w-3 h-3 flex-shrink-0" />
-        <span className="hidden sm:block truncate">{tab}</span>
+        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="hidden sm:block">{tab}</span>
         {hasDot && (
           <span
-            className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400"
+            className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-white"
             title="Información pendiente"
           />
         )}
@@ -361,6 +596,18 @@ export default function UGCDrawer({
                       onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; }}
                     />
                   </div>
+                  <div className="flex items-center gap-1">
+                    <img src={tiktokLogo} alt="TikTok" className="w-4 h-4 object-contain flex-shrink-0" />
+                    <input
+                      value={editUsernameTiktok}
+                      onChange={e => setEditUsernameTiktok(e.target.value.replace(/^@/, ''))}
+                      placeholder="handle_de_tiktok"
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border text-sm font-mono focus:outline-none transition-all"
+                      style={{ backgroundColor: 'var(--color-surface-alt)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
+                      onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; }}
+                    />
+                  </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-3)' }}>Descripción</label>
                     <textarea
@@ -376,6 +623,7 @@ export default function UGCDrawer({
                   </div>
                   <div className="flex gap-2 pt-0.5">
                     <button
+                      type="button"
                       onClick={() => setProfileEditing(false)}
                       className="px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-200"
                       style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface-alt)' }}
@@ -383,6 +631,7 @@ export default function UGCDrawer({
                       Cancelar
                     </button>
                     <button
+                      type="button"
                       onClick={handleSaveProfile}
                       disabled={profileSaving}
                       className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-all duration-200 disabled:opacity-40"
@@ -454,9 +703,14 @@ export default function UGCDrawer({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap mb-4">
-            <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${estadoConfig.className}`}>
+            <button
+              ref={estadoBadgeRef}
+              onClick={openEstadoDropdown}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-opacity hover:opacity-80 ${estadoConfig.className}`}
+            >
               {estadoConfig.label}
-            </span>
+              <ChevronDown className="w-3 h-3 opacity-60" />
+            </button>
             {needsInfoUpdate(ugc) && (
               <span className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-semibold border"
                 style={{ backgroundColor: 'rgba(252,154,0,0.08)', borderColor: 'rgba(252,154,0,0.25)', color: 'var(--color-brand)' }}>
@@ -465,6 +719,47 @@ export default function UGCDrawer({
               </span>
             )}
           </div>
+
+          {/* Estado dropdown portal */}
+          {estadoOpen && createPortal(
+            <>
+              <div style={{ position: 'fixed', inset: 0, zIndex: 9998 }} onClick={() => setEstadoOpen(false)} />
+              <div style={{
+                position: 'fixed',
+                top: estadoPos.top,
+                left: estadoPos.left,
+                zIndex: 9999,
+                minWidth: '160px',
+                borderRadius: '10px',
+                overflow: 'hidden',
+                backgroundColor: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.14)',
+              }}>
+                {(Object.keys(ESTADO_UGC_CONFIG) as EstadoUGC[]).map(estado => (
+                  <button
+                    key={estado}
+                    onClick={() => handleEstadoChange(estado)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors"
+                    style={{
+                      backgroundColor: ugc.estado === estado ? 'var(--color-surface-alt)' : 'transparent',
+                      color: 'var(--color-text-1)',
+                    }}
+                    onMouseEnter={e => { if (ugc.estado !== estado) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; }}
+                    onMouseLeave={e => { if (ugc.estado !== estado) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                  >
+                    <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${ESTADO_UGC_CONFIG[estado].className}`}>
+                      {ESTADO_UGC_CONFIG[estado].label}
+                    </span>
+                    {ugc.estado === estado && (
+                      <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>,
+            document.body
+          )}
 
           {/* Score — clickable, expands breakdown */}
           <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
@@ -527,10 +822,11 @@ export default function UGCDrawer({
         </div>
 
         {/* Tab bar */}
-        <div className="px-4 py-2.5 border-b flex gap-1.5 flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface)' }}>
+        <div className="px-4 pt-3 pb-0 border-b flex items-end gap-2 flex-shrink-0" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-alt)' }}>
           <TabBtn tab="Perfil" icon={TrendingUp} />
           <TabBtn tab="Contenido Orgánico" icon={Tv2} hasDot={missingOrganica} />
           <TabBtn tab="Pauta" icon={BarChart2} hasDot={missingPauta} />
+          <TabBtn tab="Campañas" icon={Megaphone} />
         </div>
 
         {/* Scrollable content */}
@@ -548,11 +844,37 @@ export default function UGCDrawer({
                 <>
                   {/* ── KERNEL DATA section ── */}
                   <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>
-                          Datos del perfil
-                        </h3>
+                    {/* Section header: title + single unified button */}
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>
+                        Datos del perfil
+                      </h3>
+                      <button
+                        onClick={handleScrapeAll}
+                        disabled={scrapeLoading || tiktokScrapeLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-200 disabled:opacity-60"
+                        style={
+                          (scrapeSuccess && !scrapeLoading) || (tiktokScrapeSuccess && !tiktokScrapeLoading)
+                            ? { backgroundColor: 'rgba(34,197,94,0.12)', color: 'rgb(22,163,74)', border: '1px solid rgba(34,197,94,0.35)' }
+                            : (scrapeLoading || tiktokScrapeLoading)
+                              ? { backgroundColor: 'rgba(249,115,22,0.12)', color: 'rgb(234,88,12)', border: '1px solid rgba(249,115,22,0.35)' }
+                              : { backgroundColor: 'rgb(249,115,22)', color: '#fff', border: '1px solid rgb(234,88,12)', boxShadow: '0 1px 4px rgba(249,115,22,0.4)' }
+                        }
+                      >
+                        {(scrapeLoading || tiktokScrapeLoading)
+                          ? <><Loader2 className="w-3 h-3 animate-spin" />Evaluando...</>
+                          : (scrapeSuccess || tiktokScrapeSuccess)
+                            ? <><CheckCircle2 className="w-3 h-3" />Evaluado</>
+                            : <><RefreshCw className="w-3 h-3" />Evaluar perfil</>
+                        }
+                      </button>
+                    </div>
+
+                    {/* ── Instagram card ── */}
+                    <div className="mb-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <img src={instagramLogo} alt="Instagram" className="w-4 h-4 object-contain" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>Instagram</span>
                         {ugc.evaluacionPerfil && (
                           <span
                             className="text-[10px] px-2 py-0.5 rounded-md font-semibold"
@@ -562,50 +884,191 @@ export default function UGCDrawer({
                           </span>
                         )}
                       </div>
-                      <button
-                        onClick={handleScrape}
-                        disabled={scrapeLoading}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all duration-200 disabled:opacity-50"
-                        style={{
-                          borderColor: scrapeSuccess ? 'rgba(34,197,94,0.4)' : 'var(--color-border)',
-                          backgroundColor: scrapeSuccess ? 'rgba(34,197,94,0.08)' : 'var(--color-surface-alt)',
-                          color: scrapeSuccess ? 'rgb(22,163,74)' : 'var(--color-text-2)',
-                        }}
-                      >
-                        {scrapeLoading
-                          ? <><Loader2 className="w-3 h-3 animate-spin" />Evaluando...</>
-                          : scrapeSuccess
-                            ? <><CheckCircle2 className="w-3 h-3" />Actualizado</>
-                            : <><RefreshCw className="w-3 h-3" />Evaluar ahora</>
-                        }
-                      </button>
-                    </div>
-                    {scrapeError && (
-                      <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-xl border"
-                        style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.2)' }}>
-                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />
-                        <p className="text-[11px] text-rose-600">{scrapeError}</p>
-                      </div>
-                    )}
-                    {ugc.evaluacionPerfil ? (
-                      <>
+                      {scrapeError && (
+                        <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-xl border"
+                          style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.2)' }}>
+                          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />
+                          <p className="text-[11px] text-rose-600">{scrapeError}</p>
+                        </div>
+                      )}
+                      {ugc.evaluacionPerfil ? (
                         <div className="rounded-xl p-3 border" style={{ backgroundColor: 'rgba(20,184,166,0.03)', borderColor: 'rgba(20,184,166,0.15)' }}>
                           <MetricRow label="Handle" value={ugc.evaluacionPerfil.perfil} />
                           <MetricRow label="Seguidores" value={ugc.evaluacionPerfil.seguidores.toLocaleString('es-AR')} />
-                          <MetricRow label="Engagement Rate Cuenta" value={ugc.evaluacionPerfil.engagementRateCuenta} unit="%" />
-                          <MetricRow label="Promedio vistas (últimos 5 videos)" value={ugc.evaluacionPerfil.promedioVistaVideos?.toLocaleString('es-AR')} />
+                          <MetricRow label="ER Cuenta" value={ugc.evaluacionPerfil.engagementRateCuenta} unit="%" tooltip="(Likes + Comentarios) ÷ (Posts × Seguidores) × 100. Se calculan los últimos 5 posts sin pinnear con likes visibles." />
+                          <MetricRow label="Promedio Vistas" value={ugc.evaluacionPerfil.promedioVistaVideos?.toLocaleString('es-AR')} tooltip="Promedio de reproducciones de los últimos 5 Reels publicados en el perfil." />
                           <MetricRow label="Categoría" value={ugc.evaluacionPerfil.categoria} />
-                          <MetricRow label="Rango de edad seguidores" value={ugc.evaluacionPerfil.rangoEdadSeguidores} />
                         </div>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border"
-                        style={{ backgroundColor: 'rgba(20,184,166,0.04)', borderColor: 'rgba(20,184,166,0.15)' }}>
-                        <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'rgb(13,148,136)' }} />
-                        <p className="text-xs" style={{ color: 'var(--color-text-2)' }}>
-                          Sin datos de Kernel — presioná "Evaluar ahora" para analizar el perfil.
-                        </p>
+                      ) : (
+                        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border"
+                          style={{ backgroundColor: 'rgba(20,184,166,0.04)', borderColor: 'rgba(20,184,166,0.15)' }}>
+                          <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'rgb(13,148,136)' }} />
+                          <p className="text-xs" style={{ color: 'var(--color-text-2)' }}>
+                            Sin datos — presioná "Evaluar perfil" para analizar.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── TikTok card ── */}
+                    <div className="pt-3 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <img src={tiktokLogo} alt="TikTok" className="w-4 h-4 object-contain" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>TikTok</span>
+                        {ugc.evaluacionPerfilTiktok && (
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-md font-semibold"
+                            style={{ backgroundColor: 'rgba(20,184,166,0.1)', color: 'rgb(13,148,136)', border: '1px solid rgba(20,184,166,0.2)' }}
+                          >
+                            Actualizado {formatLastScraped(ugc.evaluacionPerfilTiktok.lastScrapedAt)}
+                          </span>
+                        )}
                       </div>
+                      {tiktokScrapeError && (
+                        <div className="flex items-center gap-2 px-3 py-2 mb-2 rounded-xl border"
+                          style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.2)' }}>
+                          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />
+                          <p className="text-[11px] text-rose-600">{tiktokScrapeError}</p>
+                        </div>
+                      )}
+                      {ugc.usernameTiktok ? (
+                        ugc.evaluacionPerfilTiktok ? (
+                          <div className="rounded-xl p-3 border" style={{ backgroundColor: 'rgba(20,184,166,0.03)', borderColor: 'rgba(20,184,166,0.15)' }}>
+                            <MetricRow label="Handle" value={`@${ugc.evaluacionPerfilTiktok.handle}`} />
+                            <MetricRow label="Seguidores" value={ugc.evaluacionPerfilTiktok.seguidores.toLocaleString('es-AR')} />
+                            <MetricRow label="ER" value={ugc.evaluacionPerfilTiktok.engagementRate} unit="%" tooltip="(Likes + Comentarios) ÷ (Videos × Seguidores) × 100. Se calculan los últimos 5 videos sin pinnear." />
+                            <MetricRow label="Promedio Vistas" value={ugc.evaluacionPerfilTiktok.promedioVistas?.toLocaleString('es-AR')} tooltip="Promedio de reproducciones de los últimos 5 videos sin pinnear del perfil." />
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+                            style={{ backgroundColor: 'rgba(20,184,166,0.04)', borderColor: 'rgba(20,184,166,0.15)' }}>
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'rgb(13,148,136)' }} />
+                            <p className="text-xs" style={{ color: 'var(--color-text-2)' }}>
+                              Sin datos — presioná "Evaluar perfil" para analizar.
+                            </p>
+                          </div>
+                        )
+                      ) : (
+                        <p className="text-xs italic" style={{ color: 'var(--color-text-3)' }}>
+                          Sin handle — editá el perfil para agregarlo.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Etiquetas ── */}
+                  <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.15em] mb-3" style={{ color: 'var(--color-text-3)' }}>
+                      Etiquetas
+                    </h3>
+
+                    {/* Input con dropdown */}
+                    <div className="relative mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type="text"
+                            value={tagInput}
+                            onChange={e => { setTagInput(e.target.value); setTagDropdownOpen(true); }}
+                            onFocus={() => setTagDropdownOpen(true)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddTag(tagInput);
+                                setTagInput('');
+                                setTagDropdownOpen(false);
+                              }
+                              if (e.key === 'Escape') setTagDropdownOpen(false);
+                            }}
+                            placeholder="Agregar etiqueta..."
+                            className="w-full px-3 py-1.5 rounded-lg border text-xs focus:outline-none transition-all"
+                            style={{ backgroundColor: 'var(--color-surface-alt)', borderColor: tagDropdownOpen ? 'var(--color-brand)' : 'var(--color-border)', color: 'var(--color-text-1)', boxShadow: tagDropdownOpen ? '0 0 0 3px rgba(252,154,0,0.12)' : 'none' }}
+                          />
+
+                          {/* Dropdown */}
+                          {tagDropdownOpen && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setTagDropdownOpen(false)} />
+                              {(() => {
+                                const q = tagInput.toLowerCase();
+                                const opts = availableEtiquetas.filter(t =>
+                                  !etiquetasLocales.includes(t) && (!q || t.toLowerCase().includes(q))
+                                );
+                                const showNew = tagInput.trim() && !availableEtiquetas.some(t => t.toLowerCase() === tagInput.trim().toLowerCase()) && !etiquetasLocales.includes(tagInput.trim());
+                                if (opts.length === 0 && !showNew) return null;
+                                return (
+                                  <div
+                                    className="absolute left-0 right-0 z-20 mt-1 rounded-xl border shadow-lg overflow-hidden"
+                                    style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', maxHeight: '180px', overflowY: 'auto' }}
+                                  >
+                                    {opts.map(tag => (
+                                      <button
+                                        key={tag}
+                                        type="button"
+                                        onMouseDown={e => { e.preventDefault(); handleAddTag(tag); setTagInput(''); setTagDropdownOpen(false); }}
+                                        className="w-full text-left px-3 py-2 text-xs font-medium transition-colors duration-100"
+                                        style={{ color: 'var(--color-text-1)' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'}
+                                      >
+                                        {tag}
+                                      </button>
+                                    ))}
+                                    {showNew && (
+                                      <button
+                                        type="button"
+                                        onMouseDown={e => { e.preventDefault(); handleAddTag(tagInput); setTagInput(''); setTagDropdownOpen(false); }}
+                                        className="w-full text-left px-3 py-2 text-xs font-semibold transition-colors duration-100 flex items-center gap-1.5"
+                                        style={{ color: 'var(--color-brand-hover)', borderTop: opts.length > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}
+                                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-light)'}
+                                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'}
+                                      >
+                                        <Plus className="w-3 h-3" />
+                                        Crear "{tagInput.trim()}"
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => { handleAddTag(tagInput); setTagInput(''); setTagDropdownOpen(false); }}
+                          className="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all duration-200"
+                          style={{ borderColor: 'var(--color-brand-border)', backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)' }
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-light)' }
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Chips seleccionadas */}
+                    {etiquetasLocales.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {etiquetasLocales.map(tag => (
+                          <span
+                            key={tag}
+                            className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg"
+                            style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', border: '1px solid var(--color-brand-border)' }}
+                          >
+                            {tag}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTag(tag)}
+                              className="ml-0.5 hover:opacity-60 transition-opacity"
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs italic" style={{ color: 'var(--color-text-3)' }}>Sin etiquetas</p>
                     )}
                   </div>
 
@@ -665,127 +1128,30 @@ export default function UGCDrawer({
                     </div>
                   )}
 
-                  {/* ── Campañas asignadas ── */}
-                  {ugc.estado !== 'Descartado' && (
-                    <div className="px-6 py-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-3)' }}>
-                          Campañas asignadas
-                        </h3>
-                        {availableToAssign.length > 0 && (
-                          <div className="relative">
-                            <button
-                              onClick={() => setAssignMenuOpen(!assignMenuOpen)}
-                              title="Agregar a campaña"
-                              className="w-6 h-6 flex items-center justify-center rounded-lg border transition-all duration-200"
-                              style={{
-                                borderColor: assignMenuOpen ? 'var(--color-brand)' : 'var(--color-border)',
-                                backgroundColor: assignMenuOpen ? 'var(--color-brand-light)' : 'var(--color-surface-alt)',
-                                color: assignMenuOpen ? 'var(--color-brand)' : 'var(--color-text-2)',
-                              }}
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-
-                            {assignMenuOpen && (
-                              <>
-                                {/* Close overlay */}
-                                <div className="fixed inset-0 z-10" onClick={() => setAssignMenuOpen(false)} />
-                                <div
-                                  className="absolute right-0 top-8 z-20 min-w-[220px] rounded-xl border py-1 shadow-xl"
-                                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
-                                >
-                                  <p className="text-[10px] font-black uppercase tracking-wider px-3 py-2" style={{ color: 'var(--color-text-3)' }}>
-                                    Agregar a campaña
-                                  </p>
-                                  {availableToAssign.map(c => (
-                                    <button
-                                      key={c.id}
-                                      onClick={() => { onAsignar(ugc, c.id); setAssignMenuOpen(false); }}
-                                      className="w-full flex items-center justify-between px-3 py-2.5 text-sm transition-all duration-200"
-                                      style={{ color: 'var(--color-text-1)' }}
-                                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; }}
-                                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
-                                    >
-                                      <span className="font-medium truncate mr-2 text-left">{c.nombre}</span>
-                                      <span
-                                        className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex-shrink-0"
-                                        style={estadoCampanaStyle(c.estado)}
-                                      >
-                                        {c.estado}
-                                      </span>
-                                    </button>
-                                  ))}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {assignedCampaigns.length === 0 ? (
-                        <div
-                          className="py-4 text-center rounded-xl border"
-                          style={{ borderColor: 'var(--color-border)', borderStyle: 'dashed' }}
-                        >
-                          <p className="text-xs italic" style={{ color: 'var(--color-text-3)' }}>No asignado a ninguna campaña</p>
-                          {availableToAssign.length > 0 && (
-                            <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-3)' }}>
-                              Usá el botón + para agregar
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {assignedCampaigns.map(c => {
-                            const ugcInCamp = c.ugcs.find(u => u.ugcId === ugc.id);
-                            return (
-                              <div
-                                key={c.id}
-                                className="flex items-center justify-between px-3 py-2.5 rounded-xl border"
-                                style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-alt)' }}
-                              >
-                                <div className="flex flex-col gap-0.5 min-w-0">
-                                  <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text-1)' }}>{c.nombre}</span>
-                                  {ugcInCamp && (
-                                    <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>
-                                      Estado: {ugcInCamp.estado}
-                                    </span>
-                                  )}
-                                </div>
-                                <span
-                                  className="text-[10px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0 ml-2"
-                                  style={estadoCampanaStyle(c.estado)}
-                                >
-                                  {c.estado}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </>
               )}
 
               {/* ── TAB: CONTENIDO ORGÁNICO ──────────────────────────────── */}
               {activeTab === 'Contenido Orgánico' && (
-                <div className="px-6 py-5">
-                  <div className="flex items-center justify-between mb-4">
+                <div className="px-6 py-4">
+                  <div className="flex items-center justify-between mb-3">
                     <div>
                       <h3 className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>Evaluación de Contenido Orgánico</h3>
                       <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>Cada variable pondera 25% del score orgánico</p>
                     </div>
-                    {ugc.evaluacionOrganica?.completado && !orgEditing && (
-                      <button
-                        onClick={() => setOrgEditing(true)}
-                        className="text-xs px-3 py-1.5 rounded-lg border transition-all duration-200"
-                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface-alt)' }}
-                      >
-                        Editar
-                      </button>
-                    )}
+                    <div className="flex-shrink-0 ml-2">
+                      {ugc.evaluacionOrganica?.completado && !orgEditing ? (
+                        <button
+                          onClick={() => setOrgEditing(true)}
+                          className="text-xs px-3 py-1.5 rounded-lg border transition-all duration-200"
+                          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface-alt)' }}
+                        >
+                          Editar
+                        </button>
+                      ) : !ugc.evaluacionOrganica?.completado ? (
+                        <WarnTooltip message="Completá esta sección para poder calcular el score del creador." />
+                      ) : null}
+                    </div>
                   </div>
 
                   {ugc.evaluacionOrganica?.completado && !orgEditing ? (
@@ -802,20 +1168,14 @@ export default function UGCDrawer({
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-4">
-                      {!ugc.evaluacionOrganica?.completado && (
-                        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border"
-                          style={{ backgroundColor: 'rgba(252,154,0,0.06)', borderColor: 'rgba(252,154,0,0.2)' }}>
-                          <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />
-                          <p className="text-xs" style={{ color: 'var(--color-text-2)' }}>
-                            Completá esta sección para poder calcular el score del creador.
-                          </p>
-                        </div>
-                      )}
-                      <div className="grid grid-cols-2 gap-3">
-                        <FormField label="Views promedio" unit="25%" value={orgViews} onChange={setOrgViews} placeholder="ej: 12500" />
-                        <FormField label="Shares promedio" unit="25%" value={orgShares} onChange={setOrgShares} placeholder="ej: 340" />
-                        <FormField label="Engagement Rate" unit="% · 25%" value={orgER} onChange={setOrgER} placeholder="ej: 4.2" />
+                    <div className="flex flex-col gap-3">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <FormField label="Views promedio" unit="25%" value={orgViews} onChange={setOrgViews} placeholder="ej: 12500"
+                          tooltip="Promedio de reproducciones por video en los últimos posteos orgánicos." />
+                        <FormField label="Shares promedio" unit="25%" value={orgShares} onChange={setOrgShares} placeholder="ej: 340"
+                          tooltip="Promedio de veces que se compartió cada video orgánico." />
+                        <FormField label="Engagement Rate" unit="% · 25%" value={orgER} onChange={setOrgER} placeholder="ej: 4.2"
+                          tooltip="(Likes + Comentarios) ÷ Alcance × 100, promediado en los últimos posteos." />
                         <FormField
                           label="Hook Natural"
                           unit="1–10 · 25%"
@@ -825,14 +1185,14 @@ export default function UGCDrawer({
                             if (v === '' || (n >= 1 && n <= 10)) setOrgHook(v);
                           }}
                           placeholder="ej: 8"
-                          hint="Puntuación de la calidad del hook inicial del contenido"
+                          tooltip="Puntuación subjetiva del 1 al 10 sobre qué tan efectivo es el arranque del video para retener al espectador."
                         />
                       </div>
-                      <div className="flex gap-2 pt-1">
+                      <div className="flex gap-2">
                         {orgEditing && (
                           <button
                             onClick={() => setOrgEditing(false)}
-                            className="px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all duration-200"
+                            className="px-4 py-2 rounded-xl border text-sm font-semibold transition-all duration-200"
                             style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface-alt)' }}
                           >
                             Cancelar
@@ -841,7 +1201,7 @@ export default function UGCDrawer({
                         <button
                           onClick={handleSaveOrganica}
                           disabled={orgSaving}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold text-sm transition-all duration-200 active:scale-[0.97] disabled:opacity-40"
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-white rounded-xl font-semibold text-sm transition-all duration-200 active:scale-[0.97] disabled:opacity-40"
                           style={{ backgroundColor: 'var(--color-brand)' }}
                         >
                           {orgSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
@@ -855,21 +1215,25 @@ export default function UGCDrawer({
 
               {/* ── TAB: PAUTA ───────────────────────────────────────────── */}
               {activeTab === 'Pauta' && (
-                <div className="px-6 py-5">
-                  <div className="flex items-center justify-between mb-4">
+                <div className="px-6 py-4">
+                  <div className="flex items-center justify-between mb-3">
                     <div>
                       <h3 className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>Evaluación de KPIs de Pauta</h3>
                       <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>Métricas de rendimiento en campañas pagadas</p>
                     </div>
-                    {ugc.evaluacionPauta?.completado && !pautaEditing && (
-                      <button
-                        onClick={() => setPautaEditing(true)}
-                        className="text-xs px-3 py-1.5 rounded-lg border transition-all duration-200"
-                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface-alt)' }}
-                      >
-                        Editar
-                      </button>
-                    )}
+                    <div className="flex-shrink-0 ml-2">
+                      {ugc.evaluacionPauta?.completado && !pautaEditing ? (
+                        <button
+                          onClick={() => setPautaEditing(true)}
+                          className="text-xs px-3 py-1.5 rounded-lg border transition-all duration-200"
+                          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface-alt)' }}
+                        >
+                          Editar
+                        </button>
+                      ) : !ugc.evaluacionPauta?.completado ? (
+                        <WarnTooltip message="Completá esta sección para poder calcular el score del creador." />
+                      ) : null}
+                    </div>
                   </div>
 
                   {ugc.evaluacionPauta?.completado && !pautaEditing ? (
@@ -888,29 +1252,26 @@ export default function UGCDrawer({
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-4">
-                      {!ugc.evaluacionPauta?.completado && (
-                        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border"
-                          style={{ backgroundColor: 'rgba(252,154,0,0.06)', borderColor: 'rgba(252,154,0,0.2)' }}>
-                          <AlertTriangle className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />
-                          <p className="text-xs" style={{ color: 'var(--color-text-2)' }}>
-                            Completá esta sección para poder calcular el score del creador.
-                          </p>
-                        </div>
-                      )}
-                      <div className="grid grid-cols-2 gap-3">
-                        <FormField label="Impresiones" value={pImpresiones} onChange={setPImpresiones} placeholder="ej: 45000" />
-                        <FormField label="Alcance" value={pAlcance} onChange={setPAlcance} placeholder="ej: 38000" />
-                        <FormField label="CPM" unit="$" value={pCPM} onChange={setPCPM} placeholder="ej: 2.5" />
-                        <FormField label="Frecuencia" value={pFrecuencia} onChange={setPFrecuencia} placeholder="ej: 1.8" />
-                        <FormField label="CTR" unit="%" value={pCTR} onChange={setPCTR} placeholder="ej: 3.2" />
-                        <FormField label="VTR" unit="%" value={pVTR} onChange={setPVTR} placeholder="ej: 65" />
+                    <div className="flex flex-col gap-3">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <FormField label="Impresiones" value={pImpresiones} onChange={setPImpresiones} placeholder="ej: 45000"
+                          tooltip="Total de veces que se mostró el anuncio, incluyendo repeticiones al mismo usuario." />
+                        <FormField label="Alcance" value={pAlcance} onChange={setPAlcance} placeholder="ej: 38000"
+                          tooltip="Cantidad de personas únicas que vieron el anuncio al menos una vez." />
+                        <FormField label="CPM" unit="$" value={pCPM} onChange={setPCPM} placeholder="ej: 2.5"
+                          tooltip="Costo por cada 1.000 impresiones. Indica la eficiencia del gasto en pauta." />
+                        <FormField label="Frecuencia" value={pFrecuencia} onChange={setPFrecuencia} placeholder="ej: 1.8"
+                          tooltip="Promedio de veces que cada persona vio el anuncio. Impresiones ÷ Alcance." />
+                        <FormField label="CTR" unit="%" value={pCTR} onChange={setPCTR} placeholder="ej: 3.2"
+                          tooltip="Click-Through Rate: % de personas que hicieron clic sobre el total de impresiones." />
+                        <FormField label="VTR" unit="%" value={pVTR} onChange={setPVTR} placeholder="ej: 65"
+                          tooltip="View-Through Rate: % de personas que vieron el video completo sobre el total de impresiones." />
                       </div>
-                      <div className="flex gap-2 pt-1">
+                      <div className="flex gap-2">
                         {pautaEditing && (
                           <button
                             onClick={() => setPautaEditing(false)}
-                            className="px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all duration-200"
+                            className="px-4 py-2 rounded-xl border text-sm font-semibold transition-all duration-200"
                             style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface-alt)' }}
                           >
                             Cancelar
@@ -919,7 +1280,7 @@ export default function UGCDrawer({
                         <button
                           onClick={handleSavePauta}
                           disabled={pautaSaving}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold text-sm transition-all duration-200 active:scale-[0.97] disabled:opacity-40"
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-white rounded-xl font-semibold text-sm transition-all duration-200 active:scale-[0.97] disabled:opacity-40"
                           style={{ backgroundColor: 'var(--color-brand)' }}
                         >
                           {pautaSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
@@ -930,30 +1291,111 @@ export default function UGCDrawer({
                   )}
                 </div>
               )}
+
+              {/* ── TAB: CAMPAÑAS ─────────────────────────────────────────── */}
+              {activeTab === 'Campañas' && (
+                <div className="px-6 py-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-3)' }}>
+                      Campañas asignadas
+                    </h3>
+                    {ugc.estado !== 'Descartado' && availableToAssign.length > 0 && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setAssignMenuOpen(!assignMenuOpen)}
+                          title="Agregar a campaña"
+                          className="w-6 h-6 flex items-center justify-center rounded-lg border transition-all duration-200"
+                          style={{
+                            borderColor: assignMenuOpen ? 'var(--color-brand)' : 'var(--color-border)',
+                            backgroundColor: assignMenuOpen ? 'var(--color-brand-light)' : 'var(--color-surface-alt)',
+                            color: assignMenuOpen ? 'var(--color-brand)' : 'var(--color-text-2)',
+                          }}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+
+                        {assignMenuOpen && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setAssignMenuOpen(false)} />
+                            <div
+                              className="absolute right-0 top-8 z-20 min-w-[220px] rounded-xl border py-1 shadow-xl"
+                              style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+                            >
+                              <p className="text-[10px] font-black uppercase tracking-wider px-3 py-2" style={{ color: 'var(--color-text-3)' }}>
+                                Agregar a campaña
+                              </p>
+                              {availableToAssign.map(c => (
+                                <button
+                                  key={c.id}
+                                  onClick={() => { onAsignar(ugc, c.id); setAssignMenuOpen(false); }}
+                                  className="w-full flex items-center justify-between px-3 py-2.5 text-sm transition-all duration-200"
+                                  style={{ color: 'var(--color-text-1)' }}
+                                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; }}
+                                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
+                                >
+                                  <span className="font-medium truncate mr-2 text-left">{c.nombre}</span>
+                                  <span
+                                    className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex-shrink-0"
+                                    style={estadoCampanaStyle(c.estado)}
+                                  >
+                                    {c.estado}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {assignedCampaigns.length === 0 ? (
+                    <div
+                      className="py-4 text-center rounded-xl border"
+                      style={{ borderColor: 'var(--color-border)', borderStyle: 'dashed' }}
+                    >
+                      <p className="text-xs italic" style={{ color: 'var(--color-text-3)' }}>No asignado a ninguna campaña</p>
+                      {ugc.estado !== 'Descartado' && availableToAssign.length > 0 && (
+                        <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-3)' }}>
+                          Usá el botón + para agregar
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {assignedCampaigns.map(c => {
+                        const ugcInCamp = c.ugcs.find(u => u.ugcId === ugc.id);
+                        return (
+                          <div
+                            key={c.id}
+                            className="flex items-center justify-between px-3 py-2.5 rounded-xl border"
+                            style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-alt)' }}
+                          >
+                            <div className="flex flex-col gap-0.5 min-w-0">
+                              <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text-1)' }}>{c.nombre}</span>
+                              {ugcInCamp && (
+                                <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>
+                                  Estado: {ugcInCamp.estado}
+                                </span>
+                              )}
+                            </div>
+                            <span
+                              className="text-[10px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0 ml-2"
+                              style={estadoCampanaStyle(c.estado)}
+                            >
+                              {c.estado}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
 
-        {/* Action buttons */}
-        <div className="px-6 py-4 border-t flex-shrink-0 flex items-center gap-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
-          <button
-            onClick={() => onAvanzar(ugc)}
-            disabled={!nextEstado}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold text-sm transition-all duration-200 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ backgroundColor: 'var(--color-brand)', boxShadow: nextEstado ? 'var(--shadow-btn-brand)' : 'none' }}
-            onMouseEnter={e => { if (nextEstado) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'; }}
-            onMouseLeave={e => { if (nextEstado) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'; }}
-          >
-            <Send className="w-4 h-4" />
-            {nextEstado ? `Avanzar a ${nextEstado}` : 'Etapa final'}
-          </button>
-          <button
-            onClick={() => onDescartar(ugc)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 transition-all duration-200 font-semibold text-sm"
-          >
-            Descartar
-          </button>
-        </div>
       </div>
     </>
   );

@@ -6,6 +6,7 @@ const initializing = new Map(); // platform -> Promise (prevents duplicate init 
 
 const PROFILES = {
   instagram: process.env.KERNEL_PROFILE_INSTAGRAM,
+  tiktok:    process.env.KERNEL_PROFILE_TIKTOK,
 };
 
 const HEADFUL_PLATFORMS = (process.env.HEADFUL_PLATFORMS ?? 'instagram')

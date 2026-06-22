@@ -1,8 +1,9 @@
 import 'dotenv/config'; // loads .env in dev; no-op in Cloud Run where vars are already injected
+import { pathToFileURL } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import { BigQuery } from '@google-cloud/bigquery';
-import { scrapeCreatorProfiles } from './kernel/index.js';
+import { scrapeCreatorProfiles, scrapeTikTokProfiles } from './kernel/index.js';
 
 const app = express();
 app.use(cors());
@@ -25,7 +26,8 @@ app.get('/api/creators', async (req, res) => {
     const [creators, allMessages] = await Promise.all([
       q(`
         SELECT creator_id, full_name, username, platform, canal, estado, score,
-               ultima_actividad, campana_asignada, seguidores_display, bio, brand_id
+               ultima_actividad, campana_asignada, seguidores_display, bio, brand_id,
+               etiquetas, username_tiktok
         FROM ${DATASET}.creators
         ORDER BY score DESC NULLS LAST, full_name ASC
       `),
@@ -60,6 +62,8 @@ app.get('/api/creators', async (req, res) => {
       conversacion: messagesMap[c.creator_id] || [],
       calificacion: [],
       scoreBreakdown: [],
+      etiquetas: (() => { try { return JSON.parse(c.etiquetas || '[]'); } catch { return []; } })(),
+      usernameTiktok: c.username_tiktok || undefined,
     }));
 
     res.json(result);
@@ -93,6 +97,14 @@ app.get('/api/creators/:id', async (req, res) => {
       categoria: c.eval_perfil_categoria ?? '',
       rangoEdadSeguidores: c.eval_perfil_rango_edad_seguidores ?? '',
       lastScrapedAt: c.eval_perfil_last_scraped_at?.value ?? c.eval_perfil_last_scraped_at ?? '',
+    } : undefined;
+
+    const evalPerfilTiktok = c.tiktok_eval_seguidores != null ? {
+      handle: c.username_tiktok ?? '',
+      seguidores: Number(c.tiktok_eval_seguidores),
+      engagementRate: c.tiktok_eval_engagement_rate != null ? Number(c.tiktok_eval_engagement_rate) : null,
+      promedioVistas: c.tiktok_eval_promedio_vistas != null ? Number(c.tiktok_eval_promedio_vistas) : null,
+      lastScrapedAt: c.tiktok_eval_last_scraped_at?.value ?? c.tiktok_eval_last_scraped_at ?? '',
     } : undefined;
 
     const evalOrganica = c.eval_organica_completado ? {
@@ -141,8 +153,11 @@ app.get('/api/creators/:id', async (req, res) => {
         maximo: s.maximo,
       })),
       evaluacionPerfil: evalPerfil,
+      evaluacionPerfilTiktok: evalPerfilTiktok,
       evaluacionOrganica: evalOrganica,
       evaluacionPauta: evalPauta,
+      etiquetas: (() => { try { return JSON.parse(c.etiquetas || '[]'); } catch { return []; } })(),
+      usernameTiktok: c.username_tiktok || undefined,
     });
   } catch (err) {
     console.error('GET /api/creators/:id error:', err);
@@ -154,16 +169,16 @@ app.get('/api/creators/:id', async (req, res) => {
 app.put('/api/creators/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, canal, estado, score, bio, campanasignada, seguidores, username } = req.body;
+    const { nombre, canal, estado, score, bio, campanasignada, seguidores, username, etiquetas, usernameTiktok } = req.body;
 
     await q(`
       UPDATE ${DATASET}.creators SET
         full_name = @nombre, canal = @canal, estado = @estado,
         score = @score, bio = @bio, campana_asignada = @campanasignada,
         seguidores_display = @seguidores, username = @username,
-        updated_at = CURRENT_TIMESTAMP()
+        etiquetas = @etiquetas, username_tiktok = @usernameTiktok
       WHERE creator_id = @id
-    `, { id, nombre, canal, estado, score: score || 0, bio: bio || '', campanasignada: campanasignada || '', seguidores: seguidores || '', username: username || null });
+    `, { id, nombre, canal, estado, score: score || 0, bio: bio || '', campanasignada: campanasignada || '', seguidores: seguidores || '', username: username || null, etiquetas: JSON.stringify(etiquetas || []), usernameTiktok: usernameTiktok || null });
 
     res.json({ ok: true });
   } catch (err) {
@@ -186,6 +201,39 @@ app.delete('/api/creators/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('DELETE /api/creators/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PATCH /api/creators/:id/etiquetas ──────────────────────────────
+app.patch('/api/creators/:id/etiquetas', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { etiquetas } = req.body;
+    await q(`
+      UPDATE ${DATASET}.creators SET
+        etiquetas = @etiquetas,
+        updated_at = CURRENT_TIMESTAMP()
+      WHERE creator_id = @id
+    `, { id, etiquetas: JSON.stringify(etiquetas || []) });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PATCH /api/creators/:id/etiquetas error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/etiquetas ─────────────────────────────────────────────
+app.get('/api/etiquetas', async (req, res) => {
+  try {
+    const rows = await q(`SELECT etiquetas FROM ${DATASET}.creators WHERE etiquetas IS NOT NULL AND etiquetas != '[]'`);
+    const tagSet = new Set();
+    rows.forEach(row => {
+      try { JSON.parse(row.etiquetas).forEach(t => tagSet.add(t)); } catch {}
+    });
+    res.json([...tagSet].sort());
+  } catch (err) {
+    console.error('GET /api/etiquetas error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -390,6 +438,48 @@ app.post('/api/creators/:id/scrape', async (req, res) => {
   }
 });
 
+// ─── POST /api/creators/:id/scrape-tiktok ───────────────────────────
+// Triggers a Kernel TikTok scrape for a single creator and returns updated tiktok_eval_* data.
+app.post('/api/creators/:id/scrape-tiktok', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await scrapeTikTokProfiles([id]);
+
+    if (result.failed.length) {
+      return res.status(422).json({ ok: false, error: result.failed[0]?.reason, durationMs: result.durationMs });
+    }
+
+    if (!result.success.length) {
+      return res.status(422).json({ ok: false, error: 'no_username_tiktok', durationMs: result.durationMs });
+    }
+
+    // Re-fetch updated tiktok_eval fields to return fresh data
+    const [rows] = await bq.query({
+      query: `
+        SELECT tiktok_eval_seguidores, tiktok_eval_engagement_rate,
+               tiktok_eval_promedio_vistas, tiktok_eval_last_scraped_at, username_tiktok
+        FROM ${DATASET}.creators WHERE creator_id = @id
+      `,
+      params: { id },
+      location: 'US',
+    });
+
+    const c = rows[0] ?? {};
+    const evaluacionPerfilTiktok = c.tiktok_eval_seguidores != null ? {
+      handle: c.username_tiktok ?? '',
+      seguidores: Number(c.tiktok_eval_seguidores),
+      engagementRate: c.tiktok_eval_engagement_rate != null ? Number(c.tiktok_eval_engagement_rate) : null,
+      promedioVistas: c.tiktok_eval_promedio_vistas != null ? Number(c.tiktok_eval_promedio_vistas) : null,
+      lastScrapedAt: c.tiktok_eval_last_scraped_at?.value ?? c.tiktok_eval_last_scraped_at ?? '',
+    } : null;
+
+    res.json({ ok: true, evaluacionPerfilTiktok, durationMs: result.durationMs });
+  } catch (err) {
+    console.error('POST /api/creators/:id/scrape-tiktok error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ─── POST /api/campaigns/:id/scrape-creators ────────────────────────
 // Triggers a Kernel batch scrape for all creators assigned to a campaign.
 app.post('/api/campaigns/:id/scrape-creators', async (req, res) => {
@@ -419,7 +509,7 @@ app.post('/api/campaigns/:id/scrape-creators', async (req, res) => {
 export { app };
 
 // Standalone mode: only listen when run directly (node server/index.js)
-const isMain = import.meta.url === `file:///${process.argv[1].replace(/\\/g, '/')}`;
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   const PORT = 3001;
   app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT}`));

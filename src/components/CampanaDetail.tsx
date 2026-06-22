@@ -292,7 +292,10 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                       <button
                         onClick={() => { setOverrideUGC(ugc!); setOverrideMsg(''); setOverrideSent(false); }}
                         title="Override bot — contactar directamente"
-                        className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold bg-amber-50 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors duration-200 whitespace-nowrap"
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold rounded-lg transition-all duration-200 whitespace-nowrap"
+                        style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)', color: 'var(--color-brand-hover)', border: '1px solid var(--color-brand-border)' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#ffe8b5'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-light)'}
                       >
                         <Zap className="w-3 h-3" />
                         Override
@@ -359,7 +362,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       {/* Override Bot Modal */}
       {overrideUGC && (
         <>
-          <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-50 overlay-enter" onClick={() => setOverrideUGC(null)} />
+          <div className="fixed inset-0 z-50 overlay-enter" style={{ backgroundColor: 'rgba(9,10,15,0.45)', backdropFilter: 'blur(4px)' }} onClick={() => setOverrideUGC(null)} />
           <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
             <div className="rounded-2xl w-full max-w-md pointer-events-auto modal-enter border"
               style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}>
@@ -403,8 +406,8 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                   </div>
                 ) : (
                   <>
-                    <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
-                      <p className="text-xs text-amber-700 font-medium">
+                    <div className="p-3 rounded-xl border" style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)' }}>
+                      <p className="text-xs font-medium" style={{ color: 'var(--color-brand-hover)' }}>
                         ⚡ Este mensaje bypasea al bot y se enviará <strong>directamente por WhatsApp</strong>.
                         Usalo para casos urgentes o personalizados.
                       </p>
@@ -430,7 +433,10 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                       <button
                         onClick={() => { if (!overrideMsg.trim()) return; setOverrideSent(true); }}
                         disabled={!overrideMsg.trim()}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl font-semibold hover:bg-amber-600 transition-colors duration-200 text-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97]"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold transition-all duration-200 text-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97]"
+                        style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+                        onMouseEnter={e => { if (!overrideMsg.trim()) return; (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'; }}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
                       >
                         <Send className="w-4 h-4" />
                         Enviar ahora
@@ -457,7 +463,8 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       {showLanzarModal && (
         <>
           <div
-            className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-50 overlay-enter"
+            className="fixed inset-0 z-50 overlay-enter"
+            style={{ backgroundColor: 'rgba(9,10,15,0.45)', backdropFilter: 'blur(4px)' }}
             onClick={() => { if (!isScraping) setShowLanzarModal(false); }}
           />
           <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">

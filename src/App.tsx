@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Megaphone, Bell, ChevronRight, Sun, Moon, MessageSquare, ScanSearch } from 'lucide-react';
+import { Users, Megaphone, Bell, ChevronRight, Sun, Moon, MessageSquare, ScanSearch, Star } from 'lucide-react';
 import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign } from './api';
 import type { UGC, Campana } from './data';
 import UGCsTab from './components/UGCsTab';
@@ -8,15 +8,17 @@ import CampanasTab from './components/CampanasTab';
 import CampanaDetail from './components/CampanaDetail';
 import NuevaCampanaModal from './components/NuevaCampanaModal';
 import ProspeccionTab from './components/ProspeccionTab';
+import RecomendacionesTab from './components/RecomendacionesTab';
 import logoNgr from './assets/Logo-ngr.png';
 
-type TabId = 'ugcs' | 'campanas' | 'chats' | 'prospeccion';
+type TabId = 'ugcs' | 'campanas' | 'chats' | 'prospeccion' | 'recomendaciones';
 
 const NAV_ITEMS = [
-  { id: 'ugcs' as TabId,        label: 'UGCs Activos', icon: Users },
-  { id: 'prospeccion' as TabId, label: 'Prospección',  icon: ScanSearch },
-  { id: 'campanas' as TabId,    label: 'Campañas',     icon: Megaphone },
-  { id: 'chats' as TabId,       label: 'Chats',        icon: MessageSquare },
+  { id: 'ugcs' as TabId,             label: 'UGCs Activos',    icon: Users },
+  { id: 'prospeccion' as TabId,      label: 'Prospección',     icon: ScanSearch },
+  { id: 'campanas' as TabId,         label: 'Campañas',        icon: Megaphone },
+  { id: 'chats' as TabId,            label: 'Chats',           icon: MessageSquare },
+  { id: 'recomendaciones' as TabId,  label: 'Recomendaciones', icon: Star },
 ];
 
 function useDarkMode() {
@@ -61,21 +63,14 @@ export default function App() {
           fetchCampaigns(),
         ]);
         
-        const creatorsWithChats = creatorsData.map((u: UGC, idx: number) => {
+        const creatorsWithChats = creatorsData.map((u: UGC) => {
           const lastMsg = u.conversacion?.[u.conversacion.length - 1];
           const isUnread = lastMsg ? lastMsg.tipo === 'entrante' : false;
           
-          let tags: string[] = [];
-          if (u.estado === 'Calificado') tags.push('Calificado');
-          if (u.score > 80) tags.push('Top');
-          
-          const extraTags = ['Moda', 'Foodie', 'Skincare', 'Rosario', 'Córdoba', 'Tech'];
-          tags.push(extraTags[idx % extraTags.length]);
-
           return {
             ...u,
             unread: isUnread,
-            etiquetas: tags,
+            etiquetas: u.etiquetas || [],
           };
         });
         
@@ -92,19 +87,17 @@ export default function App() {
   }, []);
 
   // ── UGC handlers ─────────────────────────────────────────────────
-  async function handleUpdateUGC(ugc: UGC) {
-    try {
-      await updateCreator(ugc);
-      setUGCs(prev => {
-        const idx = prev.findIndex(u => u.id === ugc.id);
-        if (idx === -1) return [...prev, ugc];
-        const next = [...prev];
-        next[idx] = ugc;
-        return next;
-      });
-    } catch (err) {
-      console.error('Failed to update UGC:', err);
-    }
+  function handleUpdateUGC(ugc: UGC) {
+    // Update UI immediately so derived state (allEtiquetas, etc.) stays fresh
+    setUGCs(prev => {
+      const idx = prev.findIndex(u => u.id === ugc.id);
+      if (idx === -1) return [...prev, ugc];
+      const next = [...prev];
+      next[idx] = ugc;
+      return next;
+    });
+    // Fire-and-forget for operations that need a full-record save (avanzar, descartar, asignar)
+    updateCreator(ugc).catch(err => console.error('Failed to persist UGC update:', err));
   }
 
   async function handleDeleteUGC(id: string) {
@@ -330,6 +323,7 @@ export default function App() {
                   {item.id === 'prospeccion' && 4}
                   {item.id === 'campanas' && campanas.length}
                   {item.id === 'chats' && ugcs.filter(u => u.unread).length}
+                  {item.id === 'recomendaciones' && ugcs.filter(u => u.score > 0 && u.estado !== 'Descartado').length}
                 </span>
               </button>
             );
@@ -405,12 +399,14 @@ export default function App() {
                   {activeTab === 'prospeccion' && 'Prospección de UGCs'}
                   {activeTab === 'campanas' && 'Gestión de Campañas'}
                   {activeTab === 'chats' && 'Centro de Mensajería'}
+                  {activeTab === 'recomendaciones' && 'Recomendaciones'}
                 </h1>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>
                   {activeTab === 'ugcs' && 'Gestioná, calificá y asigná creadores a tus campañas'}
                   {activeTab === 'prospeccion' && 'Buscá y calificá nuevos creadores UGC para tus campañas'}
                   {activeTab === 'campanas' && 'Creá, pausá y monitoreá el progreso de tus campañas activas'}
                   {activeTab === 'chats' && 'Respondé mensajes y coordiná con tus creadores en un solo lugar'}
+                  {activeTab === 'recomendaciones' && 'Top creadores rankeados por score, listos para tus campañas'}
                 </p>
               </div>
             ) }
@@ -483,6 +479,9 @@ export default function App() {
               onTogglePause={handleTogglePause}
               onLanzar={handleLanzar}
             />
+          )}
+          {activeTab === 'recomendaciones' && (
+            <RecomendacionesTab ugcs={ugcs} campanas={campanas} />
           )}
         </main>
       </div>

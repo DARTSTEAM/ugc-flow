@@ -14,15 +14,20 @@
   --color-danger:          #db3c3c;
   --color-danger-hover:    #c02b2b;
 
-  /* ── Superficies Light (default) ─────────────────────────────────── */
-  --color-bg-app:          #F8F9FA;
-  --color-surface:         #FFFFFF;
-  --color-surface-alt:     #F8F9FA;
-  --color-border:          #E2E8F0;
-  --color-border-subtle:   #F1F5F9;
-  --color-text-1:          #0F172A;
-  --color-text-2:          #475569;
-  --color-text-3:          #94A3B8;
+  /* ── Superficies Light — Paleta Ámbar Puro ───────────────────────
+     Todos los neutrales están tintados hacia el hue del brand (H≈72-74)
+     con chroma mínimo (0.005-0.016) para crear cohesión con #fc9a00
+     sin que el tinte sea perceptiblemente "cálido" al ojo casual.
+     El fondo deja de pelear con el naranja; ambos respiran el mismo hue.
+  ─────────────────────────────────────────────────────────────────── */
+  --color-bg-app:          oklch(97.5% 0.010 74);
+  --color-surface:         oklch(99.5% 0.005 74);
+  --color-surface-alt:     oklch(96.8% 0.013 73);
+  --color-border:          oklch(90.5% 0.016 73);
+  --color-border-subtle:   oklch(94.8% 0.009 74);
+  --color-text-1:          oklch(16%   0.022 68);
+  --color-text-2:          oklch(44%   0.015 70);
+  --color-text-3:          oklch(70%   0.010 72);
 
   /* ── Shadows ─────────────────────────────────────────────────────── */
   --shadow-card:           0 1px 8px -2px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
@@ -70,8 +75,8 @@
 
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 99px; }
-  ::-webkit-scrollbar-thumb:hover { background: #CBD5E1; }
+  ::-webkit-scrollbar-thumb { background: oklch(90.5% 0.016 73); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(85% 0.018 73); }
 
   .dark ::-webkit-scrollbar-thumb { background: #2D3148; }
   .dark ::-webkit-scrollbar-thumb:hover { background: #3D4266; }

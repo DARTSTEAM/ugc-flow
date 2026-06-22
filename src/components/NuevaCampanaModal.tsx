@@ -34,11 +34,25 @@ const STEPS = [
   { id: 3, label: 'Preguntas', icon: MessageSquare },
 ];
 
+const inputBase: React.CSSProperties = {
+  backgroundColor: 'var(--color-surface)',
+  borderColor: 'var(--color-border)',
+  color: 'var(--color-text-1)',
+};
+
+function focusInput(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
+  e.currentTarget.style.borderColor = 'var(--color-brand)';
+  e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)';
+}
+
+function blurInput(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
+  e.currentTarget.style.borderColor = 'var(--color-border)';
+  e.currentTarget.style.boxShadow = '';
+}
+
 export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
-  // Step
   const [step, setStep] = useState(1);
 
-  // Step 1: basic data
   const [nombre, setNombre] = useState('');
   const [marca, setMarca] = useState('Popeyes');
   const [descripcion, setDescripcion] = useState('');
@@ -49,19 +63,15 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
   const [mensajeContacto, setMensajeContacto] = useState('');
   const [error, setError] = useState('');
 
-  // Step 2: UGC selection
   const [selectedUGCIds, setSelectedUGCIds] = useState<string[]>([]);
   const [ugcSearch, setUGCSearch] = useState('');
 
-  // Step 3: questions
   const [questions, setQuestions] = useState<string[]>(() =>
     DEFAULT_QUESTIONS.map(q => q.replace('[Marca]', 'Popeyes'))
   );
   const [newQuestion, setNewQuestion] = useState('');
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editingText, setEditingText] = useState('');
-
-  // ── Step 1 handlers ────────────────────────────────────────────────────────
 
   function validateStep1() {
     if (!nombre.trim()) { setError('El nombre es requerido.'); return false; }
@@ -79,8 +89,6 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
     );
   }
 
-  // ── Step 2 handlers ────────────────────────────────────────────────────────
-
   function toggleUGC(id: string) {
     setSelectedUGCIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
@@ -90,8 +98,6 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
   const filteredUGCs = ugcs.filter(u =>
     u.nombre.toLowerCase().includes(ugcSearch.toLowerCase())
   );
-
-  // ── Step 3 handlers ────────────────────────────────────────────────────────
 
   function handleAddQuestion() {
     if (!newQuestion.trim()) return;
@@ -115,8 +121,6 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
     setEditingIdx(null);
   }
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
-
   function handleSubmit() {
     const ugcEntries = selectedUGCIds.map(id => ({
       ugcId: id,
@@ -124,7 +128,6 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
       fechaEnvio: new Date().toISOString().split('T')[0],
       fechaRespuesta: null,
     }));
-
     const nueva: Campana = {
       id: `camp-${Date.now()}`,
       nombre: nombre.trim(),
@@ -140,12 +143,8 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
     onCrear(nueva);
   }
 
-  // ── Navigation ─────────────────────────────────────────────────────────────
-
   function handleNext() {
-    if (step === 1) {
-      if (!validateStep1()) return;
-    }
+    if (step === 1 && !validateStep1()) return;
     setStep(s => s + 1);
   }
 
@@ -154,27 +153,39 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
     setStep(s => s - 1);
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-
   return (
     <>
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-50 overlay-enter" onClick={onClose} />
+      <div
+        className="fixed inset-0 z-50 overlay-enter"
+        style={{ backgroundColor: 'rgba(9,10,15,0.45)', backdropFilter: 'blur(4px)' }}
+        onClick={onClose}
+      />
       <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl pointer-events-auto modal-enter flex flex-col max-h-[92vh]">
+        <div
+          className="rounded-2xl border w-full max-w-2xl pointer-events-auto modal-enter flex flex-col max-h-[92vh]"
+          style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}
+        >
 
           {/* Header */}
-          <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex-shrink-0">
+          <div className="px-6 pt-6 pb-4 border-b flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
-                  <Rocket className="w-5 h-5 text-indigo-600" />
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: 'var(--color-brand-light)' }}>
+                  <Rocket className="w-5 h-5" style={{ color: 'var(--color-brand)' }} />
                 </div>
                 <div>
-                  <h2 className="text-base font-black text-slate-900">Nueva campaña</h2>
-                  <p className="text-xs text-slate-400">Paso {step} de {STEPS.length}</p>
+                  <h2 className="text-base font-black" style={{ color: 'var(--color-text-1)' }}>Nueva campaña</h2>
+                  <p className="text-xs" style={{ color: 'var(--color-text-3)' }}>Paso {step} de {STEPS.length}</p>
                 </div>
               </div>
-              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+              <button
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200"
+                style={{ color: 'var(--color-text-3)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -187,22 +198,29 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                 const isDone = step > s.id;
                 return (
                   <div key={s.id} className="flex items-center flex-1">
-                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      isActive
-                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
-                        : isDone
-                          ? 'text-emerald-600 bg-emerald-50'
-                          : 'text-slate-400 bg-slate-50'
-                    }`}>
-                      {isDone
-                        ? <Check className="w-3 h-3" />
-                        : <Icon className="w-3 h-3" />
-                      }
+                    <div
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                      style={isActive ? {
+                        backgroundColor: 'var(--color-brand)',
+                        color: '#fff',
+                        boxShadow: 'var(--shadow-btn-brand)',
+                      } : isDone ? {
+                        backgroundColor: '#ecfdf5',
+                        color: '#059669',
+                      } : {
+                        backgroundColor: 'var(--color-surface-alt)',
+                        color: 'var(--color-text-3)',
+                      }}
+                    >
+                      {isDone ? <Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
                       <span className="hidden sm:block">{s.label}</span>
                       <span className="sm:hidden">{s.id}</span>
                     </div>
                     {idx < STEPS.length - 1 && (
-                      <div className={`h-px flex-1 mx-1 ${step > s.id ? 'bg-emerald-300' : 'bg-slate-100'}`} />
+                      <div
+                        className="h-px flex-1 mx-1"
+                        style={{ backgroundColor: step > s.id ? '#86efac' : 'var(--color-border-subtle)' }}
+                      />
                     )}
                   </div>
                 );
@@ -217,9 +235,9 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
             {step === 1 && (
               <div className="px-6 py-5 flex flex-col gap-4">
 
-                {/* Nombre */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] flex items-center gap-1">
+                  <label className="text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-1"
+                    style={{ color: 'var(--color-text-3)' }}>
                     <FileText className="w-3 h-3" /> Nombre de la campaña
                   </label>
                   <input
@@ -227,30 +245,40 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                     onChange={e => setNombre(e.target.value)}
                     placeholder="ej: Lanzamiento Popeyes Verano 2025"
                     autoFocus
-                    className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
+                    className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+                    style={inputBase}
+                    onFocus={focusInput}
+                    onBlur={blurInput}
                   />
                 </div>
 
-                {/* Marca + Estado */}
                 <div className="flex gap-3">
                   <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] flex items-center gap-1">
+                    <label className="text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-1"
+                      style={{ color: 'var(--color-text-3)' }}>
                       <Tag className="w-3 h-3" /> Marca
                     </label>
                     <select
                       value={marca}
                       onChange={e => handleMarcaChange(e.target.value)}
-                      className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
+                      className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+                      style={inputBase}
+                      onFocus={focusInput}
+                      onBlur={blurInput}
                     >
                       {MARCAS.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>
                   <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Estado inicial</label>
+                    <label className="text-[10px] font-black uppercase tracking-[0.15em]"
+                      style={{ color: 'var(--color-text-3)' }}>Estado inicial</label>
                     <select
                       value={estado}
                       onChange={e => setEstado(e.target.value as EstadoCampana)}
-                      className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
+                      className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+                      style={inputBase}
+                      onFocus={focusInput}
+                      onBlur={blurInput}
                     >
                       <option value="Borrador">Borrador</option>
                       <option value="Activa">Activa</option>
@@ -258,62 +286,72 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                   </div>
                 </div>
 
-                {/* Descripción */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Descripción</label>
+                  <label className="text-[10px] font-black uppercase tracking-[0.15em]"
+                    style={{ color: 'var(--color-text-3)' }}>Descripción</label>
                   <textarea
                     value={descripcion}
                     onChange={e => setDescripcion(e.target.value)}
                     placeholder="Descripción de la campaña, brief, objetivos..."
                     rows={3}
-                    className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all resize-none"
+                    className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all resize-none"
+                    style={inputBase}
+                    onFocus={focusInput}
+                    onBlur={blurInput}
                   />
                 </div>
 
-                {/* Fechas */}
                 <div className="flex gap-3">
                   <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] flex items-center gap-1">
+                    <label className="text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-1"
+                      style={{ color: 'var(--color-text-3)' }}>
                       <Calendar className="w-3 h-3" /> Inicio
                     </label>
                     <input
                       type="date"
                       value={fechaInicio}
                       onChange={e => setFechaInicio(e.target.value)}
-                      className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
+                      className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+                      style={inputBase}
+                      onFocus={focusInput}
+                      onBlur={blurInput}
                     />
                   </div>
                   <div className="flex flex-col gap-1.5 flex-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] flex items-center gap-1">
+                    <label className="text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-1"
+                      style={{ color: 'var(--color-text-3)' }}>
                       <Calendar className="w-3 h-3" /> Fin
                     </label>
                     <input
                       type="date"
                       value={fechaFin}
                       onChange={e => setFechaFin(e.target.value)}
-                      className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
+                      className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+                      style={inputBase}
+                      onFocus={focusInput}
+                      onBlur={blurInput}
                     />
                   </div>
                 </div>
 
-                {/* Objetivo */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] flex items-center gap-1">
-                    <Target className="w-3 h-3" /> Objetivo de UGCs: <span className="text-slate-700 font-mono ml-1">{objetivo}</span>
+                  <label className="text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-1"
+                    style={{ color: 'var(--color-text-3)' }}>
+                    <Target className="w-3 h-3" /> Objetivo de UGCs:{' '}
+                    <span className="font-mono ml-1" style={{ color: 'var(--color-text-1)' }}>{objetivo}</span>
                   </label>
                   <input
                     type="range" min={1} max={50} value={objetivo}
                     onChange={e => setObjetivo(+e.target.value)}
-                    className="accent-indigo-600"
                   />
-                  <div className="flex justify-between text-[9px] text-slate-300 font-mono">
+                  <div className="flex justify-between text-[9px] font-mono" style={{ color: 'var(--color-text-3)' }}>
                     <span>1</span><span>50</span>
                   </div>
                 </div>
 
-                {/* Mensaje de contacto */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] flex items-center gap-1">
+                  <label className="text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-1"
+                    style={{ color: 'var(--color-text-3)' }}>
                     <MessageSquare className="w-3 h-3" /> Mensaje de contacto
                   </label>
                   <textarea
@@ -321,9 +359,14 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                     onChange={e => setMensajeContacto(e.target.value)}
                     placeholder={`Ej: ¡Hola! Te escribimos de NGR porque nos encanta tu contenido. Estamos buscando creadores para una campaña de ${marca}. ¿Tenés un momento para contarnos más?`}
                     rows={3}
-                    className="px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all resize-none"
+                    className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all resize-none"
+                    style={inputBase}
+                    onFocus={focusInput}
+                    onBlur={blurInput}
                   />
-                  <p className="text-[10px] text-slate-400">Este mensaje se enviará por WhatsApp a los creadores seleccionados al iniciar la campaña.</p>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>
+                    Este mensaje se enviará por WhatsApp a los creadores seleccionados al iniciar la campaña.
+                  </p>
                 </div>
 
                 {error && (
@@ -337,8 +380,8 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
               <div className="px-6 py-5 flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-sm font-bold text-slate-800">Seleccioná los UGCs</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <h3 className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>Seleccioná los UGCs</h3>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>
                       {selectedUGCIds.length === 0
                         ? 'Ninguno seleccionado · podés agregar luego'
                         : `${selectedUGCIds.length} UGC${selectedUGCIds.length !== 1 ? 's' : ''} seleccionado${selectedUGCIds.length !== 1 ? 's' : ''}`
@@ -348,28 +391,34 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                   {selectedUGCIds.length > 0 && (
                     <button
                       onClick={() => setSelectedUGCIds([])}
-                      className="text-xs text-slate-400 hover:text-rose-500 transition-colors underline"
+                      className="text-xs underline transition-colors duration-200"
+                      style={{ color: 'var(--color-text-3)' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-danger)'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'}
                     >
                       Limpiar
                     </button>
                   )}
                 </div>
 
-                {/* Search */}
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--color-text-3)' }} />
                   <input
                     value={ugcSearch}
                     onChange={e => setUGCSearch(e.target.value)}
                     placeholder="Buscar creador..."
-                    className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
+                    className="w-full pl-9 pr-4 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+                    style={inputBase}
+                    onFocus={focusInput}
+                    onBlur={blurInput}
                   />
                 </div>
 
-                {/* UGC list */}
                 <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto pr-1">
                   {filteredUGCs.length === 0 && (
-                    <p className="text-center text-slate-400 text-sm py-10">No se encontraron creadores</p>
+                    <p className="text-center text-sm py-10" style={{ color: 'var(--color-text-3)' }}>
+                      No se encontraron creadores
+                    </p>
                   )}
                   {filteredUGCs.map(u => {
                     const isSelected = selectedUGCIds.includes(u.id);
@@ -380,39 +429,44 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                       <button
                         key={u.id}
                         onClick={() => toggleUGC(u.id)}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
-                          isSelected
-                            ? 'border-indigo-300 bg-indigo-50 shadow-sm shadow-indigo-100'
-                            : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50'
-                        }`}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all duration-150"
+                        style={isSelected ? {
+                          backgroundColor: 'var(--color-brand-light)',
+                          borderColor: 'var(--color-brand-border)',
+                          boxShadow: '0 0 0 1px var(--color-brand-border)',
+                        } : {
+                          backgroundColor: 'var(--color-surface)',
+                          borderColor: 'var(--color-border-subtle)',
+                        }}
+                        onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; }}
+                        onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'; }}
                       >
-                        {/* Checkbox */}
-                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                          isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-slate-200'
-                        }`}>
+                        <div
+                          className="w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all"
+                          style={isSelected ? {
+                            backgroundColor: 'var(--color-brand)',
+                            borderColor: 'var(--color-brand)',
+                          } : {
+                            borderColor: 'var(--color-border)',
+                          }}
+                        >
                           {isSelected && <Check className="w-3 h-3 text-white" />}
                         </div>
-
-                        {/* Avatar */}
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${av}`}>
                           {getInitials(u.nombre)}
                         </div>
-
-                        {/* Info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-800 truncate">{u.nombre}</span>
+                            <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-1)' }}>{u.nombre}</span>
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex-shrink-0 ${estadoCfg.className}`}>
                               {estadoCfg.label}
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-slate-400">{u.canal}</span>
-                            {u.seguidores && <span className="text-[10px] text-slate-400">· {u.seguidores} seguidores</span>}
+                            <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>{u.canal}</span>
+                            {u.seguidores && <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>· {u.seguidores} seguidores</span>}
                           </div>
                         </div>
-
-                        {/* Score */}
                         <div className={`text-xs font-mono font-bold flex-shrink-0 ${sc.text}`}>
                           {u.score}
                         </div>
@@ -421,18 +475,26 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                   })}
                 </div>
 
-                {/* Selected chips */}
                 {selectedUGCIds.length > 0 && (
-                  <div className="pt-2 border-t border-slate-50">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Seleccionados</p>
+                  <div className="pt-2 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                    <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-3)' }}>
+                      Seleccionados
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedUGCIds.map(id => {
                         const u = ugcs.find(x => x.id === id);
                         if (!u) return null;
                         return (
-                          <span key={id} className="flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full text-xs font-medium">
+                          <span
+                            key={id}
+                            className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border"
+                            style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', borderColor: 'var(--color-brand-border)' }}
+                          >
                             {u.nombre}
-                            <button onClick={(e) => { e.stopPropagation(); toggleUGC(id); }} className="hover:text-rose-500 transition-colors">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleUGC(id); }}
+                              className="hover:opacity-70 transition-opacity"
+                            >
                               <X className="w-3 h-3" />
                             </button>
                           </span>
@@ -448,28 +510,29 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
             {step === 3 && (
               <div className="px-6 py-5 flex flex-col gap-4">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800">Preguntas de calificación</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <h3 className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>
+                    Preguntas de calificación
+                  </h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>
                     Estas preguntas se enviarán a los {selectedUGCIds.length > 0 ? selectedUGCIds.length : 'todos los'} UGCs seleccionados. Podés editarlas, reordenarlas o agregar nuevas.
                   </p>
                 </div>
 
-                {/* Questions list */}
                 <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto pr-1">
                   {questions.map((q, idx) => (
                     <div
                       key={idx}
-                      className="group flex items-start gap-2 px-3 py-2.5 bg-white border border-slate-100 rounded-xl hover:border-slate-200 transition-all"
+                      className="group flex items-start gap-2 px-3 py-2.5 rounded-xl border transition-all duration-150"
+                      style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border)'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-subtle)'}
                     >
-                      {/* Drag handle */}
-                      <GripVertical className="w-4 h-4 text-slate-200 mt-0.5 flex-shrink-0 cursor-grab" />
-
-                      {/* Number */}
-                      <span className="text-[10px] font-mono font-bold text-slate-300 mt-0.5 flex-shrink-0 w-4 text-right">
+                      <GripVertical className="w-4 h-4 mt-0.5 flex-shrink-0 cursor-grab"
+                        style={{ color: 'var(--color-border)' }} />
+                      <span className="text-[10px] font-mono font-bold mt-0.5 flex-shrink-0 w-4 text-right"
+                        style={{ color: 'var(--color-text-3)' }}>
                         {idx + 1}
                       </span>
-
-                      {/* Question text / edit */}
                       <div className="flex-1 min-w-0">
                         {editingIdx === idx ? (
                           <input
@@ -481,31 +544,39 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                               if (e.key === 'Enter') saveEdit(idx);
                               if (e.key === 'Escape') setEditingIdx(null);
                             }}
-                            className="w-full text-sm text-slate-800 bg-transparent border-b border-indigo-300 focus:outline-none pb-0.5"
+                            className="w-full text-sm bg-transparent border-b focus:outline-none pb-0.5"
+                            style={{ color: 'var(--color-text-1)', borderColor: 'var(--color-brand)' }}
                           />
                         ) : (
                           <p
-                            className="text-sm text-slate-700 cursor-text hover:text-slate-900"
+                            className="text-sm cursor-text transition-colors duration-150"
+                            style={{ color: 'var(--color-text-2)' }}
                             onClick={() => startEdit(idx)}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-2)'}
                             title="Click para editar"
                           >
                             {q}
                           </p>
                         )}
                       </div>
-
-                      {/* Actions */}
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                         <button
                           onClick={() => startEdit(idx)}
-                          className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-indigo-50 text-slate-300 hover:text-indigo-600 transition-colors"
+                          className="w-6 h-6 flex items-center justify-center rounded-lg transition-all duration-150"
+                          style={{ color: 'var(--color-text-3)' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-light)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
                           title="Editar"
                         >
                           <FileText className="w-3 h-3" />
                         </button>
                         <button
                           onClick={() => handleDeleteQuestion(idx)}
-                          className="w-6 h-6 flex items-center justify-center rounded-lg hover:bg-rose-50 text-slate-300 hover:text-rose-500 transition-colors"
+                          className="w-6 h-6 flex items-center justify-center rounded-lg transition-all duration-150"
+                          style={{ color: 'var(--color-text-3)' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#fff1f2'; (e.currentTarget as HTMLElement).style.color = '#e11d48'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
                           title="Eliminar"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -515,31 +586,39 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                   ))}
                 </div>
 
-                {/* Add new question */}
                 <div className="flex gap-2 pt-1">
                   <input
                     value={newQuestion}
                     onChange={e => setNewQuestion(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleAddQuestion()}
                     placeholder="Agregar nueva pregunta..."
-                    className="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
+                    className="flex-1 px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+                    style={inputBase}
+                    onFocus={focusInput}
+                    onBlur={blurInput}
                   />
                   <button
                     onClick={handleAddQuestion}
                     disabled={!newQuestion.trim()}
-                    className="flex items-center gap-1.5 px-3 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-sm shadow-indigo-200"
+                    className="flex items-center gap-1.5 px-3 py-2.5 text-white rounded-xl text-sm font-semibold transition-all duration-200 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: 'var(--color-brand)', boxShadow: newQuestion.trim() ? 'var(--shadow-btn-brand)' : 'none' }}
+                    onMouseEnter={e => { if (newQuestion.trim()) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'; }}
+                    onMouseLeave={e => { if (newQuestion.trim()) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'; }}
                   >
                     <Plus className="w-4 h-4" />
                     Agregar
                   </button>
                 </div>
 
-                {/* Summary */}
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-3 text-xs text-slate-500">
-                  <MessageSquare className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                <div
+                  className="p-3 rounded-xl border flex items-center gap-3 text-xs"
+                  style={{ backgroundColor: 'var(--color-surface-alt)', borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-2)' }}
+                >
+                  <MessageSquare className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />
                   <span>
-                    Se enviarán <strong className="text-slate-700">{questions.length} preguntas</strong> a{' '}
-                    <strong className="text-slate-700">
+                    Se enviarán{' '}
+                    <strong style={{ color: 'var(--color-text-1)' }}>{questions.length} preguntas</strong> a{' '}
+                    <strong style={{ color: 'var(--color-text-1)' }}>
                       {selectedUGCIds.length > 0 ? `${selectedUGCIds.length} UGC${selectedUGCIds.length !== 1 ? 's' : ''}` : 'los UGCs que agregues luego'}
                     </strong>
                   </span>
@@ -549,11 +628,17 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
           </div>
 
           {/* Footer */}
-          <div className="px-6 pb-6 pt-4 border-t border-slate-50 flex-shrink-0 flex gap-2">
+          <div
+            className="px-6 pb-6 pt-4 border-t flex-shrink-0 flex gap-2"
+            style={{ borderColor: 'var(--color-border-subtle)' }}
+          >
             {step > 1 && (
               <button
                 onClick={handleBack}
-                className="flex items-center gap-1.5 px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-colors text-sm"
+                className="flex items-center gap-1.5 px-4 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
               >
                 <ChevronLeft className="w-4 h-4" />
                 Atrás
@@ -564,7 +649,10 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
 
             <button
               onClick={onClose}
-              className="px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-semibold hover:bg-slate-50 transition-colors text-sm"
+              className="px-4 py-2.5 border rounded-xl font-semibold text-sm transition-all duration-200"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
             >
               Cancelar
             </button>
@@ -572,7 +660,10 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
             {step < STEPS.length ? (
               <button
                 onClick={handleNext}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors text-sm shadow-sm shadow-indigo-200"
+                className="flex items-center gap-1.5 px-4 py-2.5 text-white rounded-xl font-semibold text-sm transition-all duration-200 active:scale-[0.97]"
+                style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
               >
                 Siguiente
                 <ChevronRight className="w-4 h-4" />
@@ -580,7 +671,10 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
             ) : (
               <button
                 onClick={handleSubmit}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-colors text-sm shadow-sm shadow-indigo-200"
+                className="flex items-center gap-1.5 px-4 py-2.5 text-white rounded-xl font-semibold text-sm transition-all duration-200 active:scale-[0.97]"
+                style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
               >
                 <Rocket className="w-4 h-4" />
                 Crear campaña

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Megaphone, Bell, ChevronRight, Sun, Moon, MessageSquare, ScanSearch, Star } from 'lucide-react';
-import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign } from './api';
-import type { UGC, Campana } from './data';
+import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign, assignCreatorToCampaign } from './api';
+import type { UGC, Campana, EstadoEnCampana } from './data';
 import UGCsTab from './components/UGCsTab';
 import ChatsTab from './components/ChatsTab';
 import CampanasTab from './components/CampanasTab';
@@ -106,6 +106,24 @@ export default function App() {
       setUGCs(prev => prev.filter(u => u.id !== id));
     } catch (err) {
       console.error('Failed to delete UGC:', err);
+    }
+  }
+
+  // ── Campaign assignment ──────────────────────────────────────────
+  async function handleAsignarCampana(ugc: UGC, campanaId: string) {
+    const today = new Date().toISOString().split('T')[0];
+    setCampanas(prev => prev.map(c => {
+      if (c.id !== campanaId) return c;
+      if (c.ugcs.some(u => u.ugcId === ugc.id)) return c;
+      return {
+        ...c,
+        ugcs: [...c.ugcs, { ugcId: ugc.id, estado: 'Pendiente' as EstadoEnCampana, fechaEnvio: today, fechaRespuesta: null }],
+      };
+    }));
+    try {
+      await assignCreatorToCampaign(campanaId, ugc.id);
+    } catch (err) {
+      console.error('Failed to assign creator to campaign:', err);
     }
   }
 
@@ -449,6 +467,7 @@ export default function App() {
               onUpdateUGC={handleUpdateUGC}
               onDeleteUGC={handleDeleteUGC}
               onGoToChat={handleGoToChat}
+              onAsignar={handleAsignarCampana}
             />
           )}
           {activeTab === 'prospeccion' && (

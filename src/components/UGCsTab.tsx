@@ -18,6 +18,7 @@ interface Props {
   onUpdateUGC: (ugc: UGC) => void;
   onDeleteUGC: (id: string) => void;
   onGoToChat?: (ugc: UGC) => void;
+  onAsignar?: (ugc: UGC, campanaId: string) => void;
 }
 
 type SortKey = 'nombre' | 'estado' | 'score' | 'ultimaActividad';
@@ -688,7 +689,7 @@ function ScoreBar({ score }: { score: number }) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDeleteUGC, onGoToChat }: Props) {
+export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDeleteUGC, onGoToChat, onAsignar }: Props) {
   const [search, setSearch] = useState('');
   const [filterEstado, setFilterEstado] = useState<EstadoUGC | ''>('');
   const [scoreMin, setScoreMin] = useState(0);
@@ -752,6 +753,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
     const updated = { ...ugc, campanasignada: campana?.nombre || null };
     onUpdateUGC(updated);
     setSelectedUGC(updated);
+    onAsignar?.(ugc, campanaId);
   }
 
   function handleCrearUGC(ugc: UGC) {

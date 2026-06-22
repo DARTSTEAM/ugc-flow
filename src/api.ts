@@ -106,6 +106,24 @@ export async function updateCampaignMensaje(id: string, mensajeContacto: string)
   });
 }
 
+export async function assignCreatorToCampaign(campaignId: string, creatorId: string): Promise<void> {
+  await json(`/campaigns/${campaignId}/assign`, {
+    method: 'POST',
+    body: JSON.stringify({ creatorId }),
+  });
+}
+
+export async function removeCreatorFromCampaign(campaignId: string, creatorId: string): Promise<void> {
+  await json(`/campaigns/${campaignId}/creators/${creatorId}`, { method: 'DELETE' });
+}
+
+export async function sendCreatorMessage(creatorId: string, tipo: 'saliente' | 'entrante', texto: string, fecha?: string): Promise<void> {
+  await json(`/creators/${creatorId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ tipo, texto, fecha }),
+  });
+}
+
 /** Placeholder — will trigger n8n/Evolution API in Sprint 2 */
 export async function sendCampaignMessage(id: string): Promise<void> {
   await json(`/campaigns/${id}/send-message`, { method: 'POST' });

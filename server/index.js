@@ -480,6 +480,79 @@ app.post('/api/creators/:id/scrape-tiktok', async (req, res) => {
   }
 });
 
+// ─── POST /api/campaigns/:id/assign ─────────────────────────────────
+// Assigns a creator to a campaign (inserts into campaign_creators if not already there).
+app.post('/api/campaigns/:id/assign', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { creatorId } = req.body;
+    if (!creatorId) return res.status(400).json({ error: 'creatorId required' });
+
+    const campaigns = await q(`SELECT brand_id FROM ${DATASET}.campaigns WHERE campaign_id = @id`, { id });
+    if (!campaigns.length) return res.status(404).json({ error: 'Campaign not found' });
+    const brandId = campaigns[0].brand_id;
+
+    const rowId = `${id}_${creatorId}`;
+    const today = new Date().toISOString().split('T')[0];
+
+    const existing = await q(`SELECT 1 FROM ${DATASET}.campaign_creators WHERE id = @rowId LIMIT 1`, { rowId });
+    if (!existing.length) {
+      await q(`
+        INSERT INTO ${DATASET}.campaign_creators (id, campaign_id, creator_id, brand_id, estado, fecha_envio)
+        VALUES (@rowId, @id, @creatorId, @brandId, 'Pendiente', @today)
+      `, { rowId, id, creatorId, brandId, today });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /api/campaigns/:id/assign error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── DELETE /api/campaigns/:id/creators/:creatorId ──────────────────
+app.delete('/api/campaigns/:id/creators/:creatorId', async (req, res) => {
+  try {
+    const { id, creatorId } = req.params;
+    await q(`DELETE FROM ${DATASET}.campaign_creators WHERE campaign_id = @id AND creator_id = @creatorId`, { id, creatorId });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /api/campaigns/:id/creators/:creatorId error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/creators/:id/messages ────────────────────────────────
+app.post('/api/creators/:id/messages', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tipo, texto, fecha } = req.body;
+    if (!tipo || !texto) return res.status(400).json({ error: 'tipo and texto required' });
+
+    const creators = await q(`SELECT brand_id FROM ${DATASET}.creators WHERE creator_id = @id`, { id });
+    const brandId = creators[0]?.brand_id || 'unknown';
+
+    const ordenRows = await q(`SELECT COALESCE(MAX(orden), 0) + 1 AS next_orden FROM ${DATASET}.messages WHERE creator_id = @id`, { id });
+    const nextOrden = Number(ordenRows[0]?.next_orden ?? 1);
+
+    const messageId = `msg-${Date.now()}`;
+    await bq.dataset(DATASET).table('messages').insert([{
+      message_id: messageId,
+      creator_id: id,
+      brand_id: brandId,
+      tipo,
+      texto,
+      fecha: fecha || new Date().toLocaleDateString('es-AR'),
+      orden: nextOrden,
+    }]);
+
+    res.json({ ok: true, message_id: messageId });
+  } catch (err) {
+    console.error('POST /api/creators/:id/messages error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── POST /api/campaigns/:id/scrape-creators ────────────────────────
 // Triggers a Kernel batch scrape for all creators assigned to a campaign.
 app.post('/api/campaigns/:id/scrape-creators', async (req, res) => {

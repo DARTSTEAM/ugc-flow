@@ -25,7 +25,7 @@ export interface RespuestaCalificacion {
 
 // ─── Evaluation interfaces ──────────────────────────────────────────────────
 
-/** Datos extraídos por Kernel al hacer scrape del perfil */
+/** Datos extraídos por Kernel al hacer scrape del perfil de Instagram */
 export interface EvaluacionPerfil {
   nombre: string;
   perfil: string;                         // handle / @username
@@ -35,6 +35,15 @@ export interface EvaluacionPerfil {
   categoria: string | null;              // null para cuentas personales
   rangoEdadSeguidores: string | null;    // siempre null — no disponible públicamente
   lastScrapedAt: string;                 // ISO timestamp
+}
+
+/** Datos extraídos por Kernel al hacer scrape del perfil de TikTok */
+export interface EvaluacionPerfilTiktok {
+  handle: string;
+  seguidores: number;
+  engagementRate: number | null;          // null si no hay videos suficientes
+  promedioVistas: number | null;          // null si no hay play counts
+  lastScrapedAt: string;
 }
 
 /** Form manual — contenido orgánico. Cada campo pondera 25% del score orgánico */
@@ -74,9 +83,11 @@ export interface UGC {
   unread?: boolean;
   etiquetas?: string[];
   phone?: string;                          // número WhatsApp del creador
-  evaluacionPerfil?: EvaluacionPerfil;     // datos de Kernel (solo lectura)
-  evaluacionOrganica?: EvaluacionOrganica; // form manual — contenido orgánico
-  evaluacionPauta?: EvaluacionPauta;       // form manual — KPIs de pauta
+  usernameTiktok?: string;
+  evaluacionPerfil?: EvaluacionPerfil;            // datos de Kernel Instagram (solo lectura)
+  evaluacionPerfilTiktok?: EvaluacionPerfilTiktok; // datos de Kernel TikTok (solo lectura)
+  evaluacionOrganica?: EvaluacionOrganica;         // form manual — contenido orgánico
+  evaluacionPauta?: EvaluacionPauta;               // form manual — KPIs de pauta
 }
 
 export interface UGCEnCampana {

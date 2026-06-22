@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { X, Sparkles, Hash } from 'lucide-react';
 import instagramLogo from '../assets/instagram-logo.png';
 import tiktokLogo from '../assets/tiktok-logo.png';
-import youtubeLogo from '../assets/youtube-logo.png';
 
-type Plataforma = 'Instagram' | 'TikTok' | 'YouTube';
+type Plataforma = 'Instagram' | 'TikTok';
 
 const NICHOS_DISPONIBLES = [
   'Gastronomía', 'Lifestyle', 'Moda', 'Belleza', 'Skincare',
@@ -16,7 +15,6 @@ const NICHOS_DISPONIBLES = [
 const PLATAFORMA_CFG: Record<Plataforma, { logo: string; activeText: string; activeBg: string; activeBorder: string }> = {
   Instagram: { logo: instagramLogo, activeText: '#7c3aed', activeBg: 'rgba(124,58,237,0.07)', activeBorder: '#c4b5fd' },
   TikTok:    { logo: tiktokLogo,    activeText: 'var(--color-text-1)', activeBg: 'rgba(0,0,0,0.05)', activeBorder: 'var(--color-border)' },
-  YouTube:   { logo: youtubeLogo,   activeText: '#dc2626', activeBg: 'rgba(220,38,38,0.06)', activeBorder: '#fca5a5' },
 };
 
 function inputStyle(focused: boolean) {
@@ -43,6 +41,7 @@ export default function NuevaBusquedaModal({ onClose }: Props) {
   const [ubicacion, setUbicacion] = useState('');
   const [hashInput, setHashInput] = useState('');
   const [hashtags, setHashtags] = useState<string[]>([]);
+  const [idioma, setIdioma] = useState('es');
 
   // Focus state for each input
   const [focused, setFocused] = useState<Record<string, boolean>>({});
@@ -154,8 +153,8 @@ export default function NuevaBusquedaModal({ onClose }: Props) {
           {/* 2 – Plataformas */}
           <section>
             {sectionLabel('Plataformas')}
-            <div className="grid grid-cols-3 gap-3">
-              {(['Instagram', 'TikTok', 'YouTube'] as Plataforma[]).map(p => {
+            <div className="grid grid-cols-2 gap-3">
+              {(['Instagram', 'TikTok'] as Plataforma[]).map(p => {
                 const cfg = PLATAFORMA_CFG[p];
                 const active = plataformas.includes(p);
                 return (
@@ -276,6 +275,8 @@ export default function NuevaBusquedaModal({ onClose }: Props) {
                 <div>
                   {fieldLabel('Idioma del contenido')}
                   <select
+                    value={idioma}
+                    onChange={e => setIdioma(e.target.value)}
                     onFocus={() => onFocus('lang')}
                     onBlur={() => onBlur('lang')}
                     className="w-full px-3.5 py-2.5 rounded-xl border text-sm outline-none transition-all duration-200"

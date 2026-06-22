@@ -177,24 +177,22 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
             />
           </div>
 
-          <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-lg text-xs font-semibold">
+          <div className="flex p-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
             <button
               onClick={() => setFilterType('all')}
-              className={`flex-1 py-1 px-2 rounded-md transition-all text-center ${
-                filterType === 'all'
-                  ? 'bg-white dark:bg-neutral-700 shadow-sm text-slate-800 dark:text-white'
-                  : 'text-slate-500 dark:text-slate-400'
-              }`}
+              className="flex-1 py-1 px-2 rounded-md transition-all text-center"
+              style={filterType === 'all'
+                ? { backgroundColor: 'var(--color-surface)', color: 'var(--color-text-1)', boxShadow: 'var(--shadow-card)' }
+                : { color: 'var(--color-text-3)' }}
             >
               Todos
             </button>
             <button
               onClick={() => setFilterType('unread')}
-              className={`flex-grow py-1 px-2 rounded-md transition-all text-center flex items-center justify-center gap-1.5 ${
-                filterType === 'unread'
-                  ? 'bg-white dark:bg-neutral-700 shadow-sm text-slate-800 dark:text-white'
-                  : 'text-slate-500 dark:text-slate-400'
-              }`}
+              className="flex-grow py-1 px-2 rounded-md transition-all text-center flex items-center justify-center gap-1.5"
+              style={filterType === 'unread'
+                ? { backgroundColor: 'var(--color-surface)', color: 'var(--color-text-1)', boxShadow: 'var(--shadow-card)' }
+                : { color: 'var(--color-text-3)' }}
             >
               No leídos
               {unreadCount > 0 && (

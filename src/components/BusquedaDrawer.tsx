@@ -22,14 +22,14 @@ export interface Busqueda {
 
 // ── Static config ───────────────────────────────────────────────────────────
 const ESTADO_CFG: Record<EstadoBusqueda, { badge: string; dot: string }> = {
-  'En progreso': { badge: 'bg-blue-50 text-blue-700 border border-blue-100',     dot: 'bg-blue-500' },
+  'En progreso': { badge: 'bg-blue-50 text-blue-700 border border-blue-100',         dot: 'bg-blue-500' },
   'Completada':  { badge: 'bg-emerald-50 text-emerald-700 border border-emerald-200', dot: 'bg-emerald-500' },
-  'Borrador':    { badge: 'bg-slate-100 text-slate-600 border border-slate-200',   dot: 'bg-slate-400' },
+  'Borrador':    { badge: 'bg-stone-100 text-stone-600 border border-stone-200',      dot: 'bg-stone-400' },
 };
 
 const PLATAFORMA_BADGE: Record<string, string> = {
   Instagram: 'bg-purple-50 text-purple-700 border border-purple-200',
-  TikTok:    'bg-slate-100 text-slate-700 border border-slate-300',
+  TikTok:    'bg-zinc-800 text-white border border-zinc-700',
   YouTube:   'bg-red-50 text-red-700 border border-red-200',
 };
 
@@ -106,7 +106,7 @@ export default function BusquedaDrawer({ busqueda, onClose }: Props) {
                 {busqueda.estado}
               </span>
               {busqueda.plataformas.map(p => (
-                <span key={p} className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${PLATAFORMA_BADGE[p] ?? 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                <span key={p} className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${PLATAFORMA_BADGE[p] ?? 'bg-stone-100 text-stone-600 border border-stone-200'}`}>
                   {p}
                 </span>
               ))}
@@ -283,7 +283,7 @@ export default function BusquedaDrawer({ busqueda, onClose }: Props) {
                         <p className="text-xs font-bold font-mono text-emerald-600">{r.engagement}</p>
                         <p className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>engage</p>
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${PLATAFORMA_BADGE[r.plataforma] ?? 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${PLATAFORMA_BADGE[r.plataforma] ?? 'bg-stone-100 text-stone-600'}`}>
                         {r.plataforma}
                       </span>
                     </div>

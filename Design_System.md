@@ -14,36 +14,65 @@ El sistema de diseño de UGC Flow busca transmitir **profesionalismo, modernidad
 
 ---
 
-## 2. Paleta de Colores
+## 2. Paleta de Colores — Ámbar Puro
 
-Para mantener la profesionalidad con el color de marca `#fc9a00` (un naranja/ámbar vibrante) y los colores secundarios llamativos (`#f98631` y `#db3c3c`), los balanceamos con una paleta neutra fría y elegante (Slate) y usaremos los colores brillantes de forma táctica en acentos, botones primarios e indicadores de estado.
+El sistema usa la estrategia **Restrained**: el naranja de marca `#fc9a00` (H≈72 en OKLCH) actúa como único acento real. Los neutrales dejan de ser Slate frío (H≈264) y se tiñen hacia el mismo hue del naranja con chroma mínimo (0.005–0.016), creando cohesión subconsciente sin añadir un segundo color. El resultado: el naranja deja de "flotar" sobre un chrome frío y la interfaz pasa de genérica a coherente.
 
-### A. Primarios y Secundarios (Acentos)
+> **Regla invariable:** No volver jamás a Slate (`H≈257-265`) para superficies y texto. El hue de los neutrales es siempre **H 68–74** (ámbar), con chroma bajísimo. El naranja es el único color de acento.
 
-| Rol | Valor Hex | Muestra | Uso Principal |
-| :--- | :--- | :--- | :--- |
-| **Primary (Brand)** | `#fc9a00` | 🟧 | Botones primarios, enlaces activos, branding, bordes de foco. |
-| **Primary Hover** | `#e08500` | 🟧 | Estado hover del botón primario. |
-| **Secondary Accent** | `#f98631` | 📙 | Elementos interactivos secundarios, tabs activos secundarios. |
-| **Destructive/Alert** | `#db3c3c` | 🟥 | Acciones destructivas (eliminar), estados de rechazo/error. |
+### A. Brand y Acentos
 
-### B. Neutros (Superficies y Texto)
+| Token CSS | Valor | Uso |
+| :--- | :--- | :--- |
+| `--color-brand` | `#fc9a00` | Botones primarios, nav activo, foco, sliders, badges de campaña |
+| `--color-brand-hover` | `#e08500` | Estado hover del brand |
+| `--color-brand-light` | `#fff7e6` | Fondo de chips, badges seleccionados, highlight de filtros activos |
+| `--color-brand-border` | `#fcd580` | Borde de elementos brand-tinted |
+| `--color-brand-muted` | `#f98631` | Avatar gradient, elementos secundarios cálidos |
+| `--color-danger` | `#db3c3c` | Acciones destructivas, estados de error |
+| `--color-danger-hover` | `#c02b2b` | Hover de peligro |
 
-#### ☀️ Modo Claro (Light Mode)
-* **Background General:** `#F8F9FA` (`bg-slate-50`)
-* **Superficies (Cards, Modales):** `#FFFFFF` (`bg-white`)
-* **Texto Principal:** `#0F172A` (`text-slate-900` / `text-slate-950`)
-* **Texto Secundario:** `#475569` (`text-slate-600`)
-* **Bordes / Divisiones:** `#E2E8F0` (`border-slate-200`)
-* **Bordes Sutiles:** `#F1F5F9` (`border-slate-100`)
+### B. Neutrales — Modo Claro (Ámbar Puro)
 
-#### 🌙 Modo Oscuro (Dark Mode)
-* **Background General:** `#090A0F` (Negro profundo con matiz azulado)
-* **Superficies (Cards, Modales):** `#13151E` (Gris oscuro azulado satinado)
-* **Texto Principal:** `#F8FAFC` (`text-slate-50`)
-* **Texto Secundario:** `#94A3B8` (`text-slate-400`)
-* **Bordes / Divisiones:** `#222635` (Gris-azul oscuro para líneas limpias)
-* **Bordes Sutiles:** `#1B1E2B` (Bordes secundarios de menor contraste)
+Todos los valores en OKLCH. El chroma es lo suficientemente bajo como para que el tinte no sea obvio, pero suficiente para que el ojo sienta coherencia con el naranja.
+
+| Token CSS | Valor OKLCH | Descripción |
+| :--- | :--- | :--- |
+| `--color-bg-app` | `oklch(97.5% 0.010 74)` | Fondo general de la app — blanco cálido muy suave |
+| `--color-surface` | `oklch(99.5% 0.005 74)` | Cards, modales, drawers — casi blanco con aliento ámbar |
+| `--color-surface-alt` | `oklch(96.8% 0.013 73)` | Fondo de tab bar, tabla header, footers — un tono más denso |
+| `--color-border` | `oklch(90.5% 0.016 73)` | Bordes estándar de cards, inputs, tablas |
+| `--color-border-subtle` | `oklch(94.8% 0.009 74)` | Divisores interiores, separadores suaves |
+| `--color-text-1` | `oklch(16% 0.022 68)` | Texto principal — near-black cálido |
+| `--color-text-2` | `oklch(44% 0.015 70)` | Texto secundario — gris cálido medio |
+| `--color-text-3` | `oklch(70% 0.010 72)` | Texto muted — gris cálido claro |
+
+### C. Neutrales — Modo Oscuro
+
+El dark mode mantiene superficies frescas (azul-oscuro). En dark mode, el calor lo aporta el naranja contra el fondo oscuro — no es necesario tintar las superficies.
+
+| Token CSS | Valor | Descripción |
+| :--- | :--- | :--- |
+| `--color-bg-app` | `#090A0F` | Negro profundo con matiz azulado |
+| `--color-surface` | `#13151E` | Superficies elevadas |
+| `--color-surface-alt` | `#1A1D29` | Superficies secundarias |
+| `--color-border` | `#222635` | Bordes en dark |
+| `--color-border-subtle` | `#1B1E2B` | Bordes sutiles en dark |
+| `--color-text-1` | `#F8FAFC` | Texto principal en dark |
+| `--color-text-2` | `#94A3B8` | Texto secundario en dark |
+| `--color-text-3` | `#475569` | Texto muted en dark |
+
+### D. Colores fijos intencionales (no usar CSS vars aquí)
+
+Los siguientes colores son **fijos** — no deben reemplazarse por CSS vars — porque deben ser legibles con los fondos pasteles de las tarjetas de campañas en ambos modos:
+
+| Uso | Color fijo | Por qué es fijo |
+| :--- | :--- | :--- |
+| Texto heading en tarjetas de campaña | `#111827` | Siempre oscuro sobre pasteles claros |
+| Texto secondary en tarjetas de campaña | `#6b7280` | Siempre gris medio sobre pasteles claros |
+| Hover verde (ícono chat) | `#ecfdf5` / `#059669` | Color semántico de "mensaje/éxito" |
+| Hover rojo (ícono eliminar) | `#fff1f2` / `#e11d48` | Color semántico de "peligro" |
+| Colores de canal (WhatsApp/Instagram/Email) | brand hex de cada plataforma | Identidad de terceros |
 
 ---
 
@@ -123,9 +152,9 @@ Las tarjetas son los contenedores clave del dashboard de campañas y UGCs.
 
 ## 6. Configuración de Tailwind CSS v4
 
-Con la llegada de **Tailwind CSS v4**, la configuración se realiza directamente mediante la directiva `@theme` dentro de tu archivo CSS principal (ej: `src/index.css`), sin necesidad de un archivo `tailwind.config.js`.
+Tailwind CSS v4 usa la directiva `@theme` en `src/index.css`. Los tokens de color son CSS custom properties resueltas nativamente por el browser. OKLCH es soportado en todos los browsers modernos (Chrome 111+, Firefox 113+, Safari 15.4+).
 
-Aquí tienes cómo estructurar tus variables en `src/index.css` para soportar todo lo anterior:
+Los nombres exactos de tokens que usa el código son los siguientes. **No crear aliases ni nombres alternativos.**
 
 ```css
 @import "tailwindcss";
@@ -135,48 +164,43 @@ Aquí tienes cómo estructurar tus variables en `src/index.css` para soportar to
   --font-sans: 'DM Sans', system-ui, sans-serif;
   --font-mono: 'DM Mono', monospace;
 
-  /* Colores de Marca */
-  --color-brand-primary: #fc9a00;
-  --color-brand-primary-hover: #e08500;
-  --color-brand-secondary: #f98631;
-  --color-brand-danger: #db3c3c;
-  --color-brand-danger-hover: #c02b2b;
+  /* Brand */
+  --color-brand:           #fc9a00;
+  --color-brand-hover:     #e08500;
+  --color-brand-light:     #fff7e6;
+  --color-brand-border:    #fcd580;
+  --color-brand-muted:     #f98631;
+  --color-danger:          #db3c3c;
+  --color-danger-hover:    #c02b2b;
 
-  /* Colores del Sistema (Claro por defecto) */
-  --color-bg-app: #F8F9FA;
-  --color-surface-app: #FFFFFF;
-  --color-border-app: #E2E8F0;
-  --color-border-subtle: #F1F5F9;
-  --color-text-primary: #0F172A;
-  --color-text-secondary: #475569;
+  /* Neutrales Light — Ámbar Puro (H 68-74, chroma 0.005-0.022) */
+  --color-bg-app:          oklch(97.5% 0.010 74);
+  --color-surface:         oklch(99.5% 0.005 74);
+  --color-surface-alt:     oklch(96.8% 0.013 73);
+  --color-border:          oklch(90.5% 0.016 73);
+  --color-border-subtle:   oklch(94.8% 0.009 74);
+  --color-text-1:          oklch(16%   0.022 68);
+  --color-text-2:          oklch(44%   0.015 70);
+  --color-text-3:          oklch(70%   0.010 72);
 
-  /* Bordes redondeados */
-  --radius-xl: 12px;
-  --radius-2xl: 16px;
-
-  /* Sombras personalizadas */
-  --shadow-premium-light: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
-  --shadow-btn-primary: 0 4px 12px -2px rgba(252, 154, 0, 0.15);
+  /* Sombras */
+  --shadow-card:           0 1px 8px -2px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+  --shadow-card-hover:     0 4px 20px -4px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.06);
+  --shadow-btn-brand:      0 4px 14px -3px rgba(252,154,0,0.30);
+  --shadow-drawer:         -8px 0 40px -8px rgba(0,0,0,0.15);
+  --shadow-modal:          0 20px 60px -10px rgba(0,0,0,0.25);
 }
 
-/* Modificadores para Modo Oscuro (usando la clase 'dark' en el html/body) */
+/* Dark mode — superficies oscuras frescas, el calor lo da el naranja */
 .dark {
-  --color-bg-app: #090A0F;
-  --color-surface-app: #13151E;
-  --color-border-app: #222635;
-  --color-border-subtle: #1B1E2B;
-  --color-text-primary: #F8FAFC;
-  --color-text-secondary: #94A3B8;
-  --shadow-premium-light: none;
-}
-
-@layer base {
-  body {
-    background-color: var(--color-bg-app);
-    color: var(--color-text-primary);
-    font-family: var(--font-sans);
-    transition: background-color 0.3s ease, color 0.3s ease;
-  }
+  --color-bg-app:          #090A0F;
+  --color-surface:         #13151E;
+  --color-surface-alt:     #1A1D29;
+  --color-border:          #222635;
+  --color-border-subtle:   #1B1E2B;
+  --color-text-1:          #F8FAFC;
+  --color-text-2:          #94A3B8;
+  --color-text-3:          #475569;
 }
 ```
 

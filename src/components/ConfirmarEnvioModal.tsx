@@ -99,7 +99,7 @@ export default function ConfirmarEnvioModal({ campana, ugcs, onClose }: Props) {
                 {campana.mensajeContacto ? (
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-3)' }}>Mensaje a enviar</p>
-                    <div className="p-3 rounded-xl text-sm leading-relaxed" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-1)', borderLeft: '3px solid var(--color-brand)' }}>
+                    <div className="p-3 rounded-xl border text-sm leading-relaxed" style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-text-1)', borderColor: 'var(--color-brand-border)' }}>
                       {campana.mensajeContacto}
                     </div>
                   </div>

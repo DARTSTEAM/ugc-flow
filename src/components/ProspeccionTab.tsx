@@ -106,7 +106,7 @@ const ESTADO_CFG: Record<EstadoBusqueda, {
 
 const PLATAFORMA_BADGE: Record<string, string> = {
   Instagram: 'bg-purple-50 text-purple-700 border border-purple-200',
-  TikTok:    'bg-slate-100 text-slate-700 border border-slate-300',
+  TikTok:    'bg-zinc-800 text-white border border-zinc-700',
   YouTube:   'bg-red-50 text-red-700 border border-red-200',
 };
 
@@ -242,7 +242,7 @@ export default function ProspeccionTab() {
                     {b.plataformas.map(p => (
                       <span
                         key={p}
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${PLATAFORMA_BADGE[p] ?? 'bg-slate-100 text-slate-600 border border-slate-200'}`}
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${PLATAFORMA_BADGE[p] ?? 'bg-stone-100 text-stone-600 border border-stone-200'}`}
                       >
                         {p}
                       </span>

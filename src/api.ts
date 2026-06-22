@@ -1,4 +1,4 @@
-import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil } from './data';
+import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok } from './data';
 
 const BASE = '/api';
 
@@ -33,12 +33,21 @@ export async function updateCreator(ugc: UGC): Promise<void> {
       campanasignada: ugc.campanasignada,
       seguidores: ugc.seguidores,
       username: ugc.username,
+      etiquetas: ugc.etiquetas,
+      usernameTiktok: ugc.usernameTiktok,
     }),
   });
 }
 
 export async function deleteCreator(id: string): Promise<void> {
   await json(`/creators/${id}`, { method: 'DELETE' });
+}
+
+export async function updateEtiquetas(id: string, etiquetas: string[]): Promise<void> {
+  await json(`/creators/${id}/etiquetas`, {
+    method: 'PATCH',
+    body: JSON.stringify({ etiquetas }),
+  });
 }
 
 export async function updateEvaluacionOrganica(
@@ -114,4 +123,10 @@ export async function scrapeCreatorsByCampaign(
   campaignId: string
 ): Promise<{ ok: boolean; success: string[]; failed: Array<{ id: string; reason: string }>; durationMs: number }> {
   return json(`/campaigns/${campaignId}/scrape-creators`, { method: 'POST' });
+}
+
+export async function scrapeTikTokCreator(
+  id: string
+): Promise<{ ok: boolean; evaluacionPerfilTiktok: EvaluacionPerfilTiktok | null; durationMs: number }> {
+  return json(`/creators/${id}/scrape-tiktok`, { method: 'POST' });
 }

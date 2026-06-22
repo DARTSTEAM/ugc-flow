@@ -46,14 +46,52 @@
 ## 3. System Rules & Coding Standards
 
 ### Design System (read `Design_System.md` for full details)
-- **Brand color:** `#fc9a00` (orange/amber). Used for primary buttons, active nav, and highlights.
-- **Typography:** DM Sans (body/UI), DM Mono (data/code elements).
-- **Dark mode:** Toggled by adding/removing the `dark` class on `<html>`. Stored in `localStorage` under key `ugcflow-theme`. CSS variables in `src/index.css` handle both modes.
-- **Styling approach:** Use CSS custom properties (e.g. `var(--color-brand)`, `var(--color-surface)`) via inline `style={{}}` props OR Tailwind v4 utility classes. **Do not mix both systems arbitrarily** — prefer CSS vars for semantic color, Tailwind for layout/spacing.
-- **Status-color cards:** CampanasTab and ProspeccionTab use **fixed pastel hex colors** for card backgrounds and borders (not CSS vars) because they must be legible in both light and dark mode. When a card has a fixed pastel background, all text inside must also use fixed hex colors (`#111827` for headings, `#6b7280` for secondary text) instead of CSS vars like `var(--color-text-1)` which would become white in dark mode.
-- **Pagination pattern:** List views that may grow use `PAGE_SIZE = 20`, a `visibleCount` state, and a "Ver más (N restantes)" button. Filter changes reset `visibleCount` to `PAGE_SIZE`.
-- **Rounded corners:** `rounded-xl` (12px) for interactive elements, `rounded-2xl` (16px) for cards/modals.
-- **Micro-animations:** All interactive elements must have `transition-all duration-200` and `active:scale-[0.98]`.
+
+#### Paleta de Colores — Ámbar Puro (decisión permanente, no revertir)
+
+La paleta usa la estrategia **Restrained**: un solo acento (naranja) sobre neutrales tintados con el mismo hue del naranja. Esta decisión fue tomada deliberadamente para crear cohesión entre el brand y el chrome. **No cambiar los neutrales a Slate (H≈257-265) ni a ningún otro hue frío.**
+
+**Regla de oro:** Todo color de superficie, borde y texto en modo claro DEBE derivar de los tokens CSS. Nunca hardcodear Slate (`#F8F9FA`, `#E2E8F0`, `#475569`, `#94A3B8`, etc.) — esos son los valores viejos.
+
+**Tokens de neutrales light (Ámbar Puro):**
+```
+--color-bg-app:        oklch(97.5% 0.010 74)   ← fondo general
+--color-surface:       oklch(99.5% 0.005 74)   ← cards, modales
+--color-surface-alt:   oklch(96.8% 0.013 73)   ← tab bars, table headers
+--color-border:        oklch(90.5% 0.016 73)   ← bordes estándar
+--color-border-subtle: oklch(94.8% 0.009 74)   ← divisores suaves
+--color-text-1:        oklch(16%   0.022 68)   ← texto principal
+--color-text-2:        oklch(44%   0.015 70)   ← texto secundario
+--color-text-3:        oklch(70%   0.010 72)   ← texto muted
+```
+
+**Tokens de brand:**
+```
+--color-brand:         #fc9a00   ← naranja principal (único acento)
+--color-brand-hover:   #e08500
+--color-brand-light:   #fff7e6   ← wash muy claro para chips y badges
+--color-brand-border:  #fcd580
+--color-brand-muted:   #f98631
+--color-danger:        #db3c3c
+--color-danger-hover:  #c02b2b
+```
+
+**Colores fijos intencionales (no sustituir por CSS vars):**
+- Tarjetas de campaña: `backgroundColor: cardBg` (pasteles fijos), texto `#111827` / `#6b7280` — legibilidad en ambos modos
+- Hover semántico de ícono chat: `#ecfdf5` / `#059669`
+- Hover semántico de ícono eliminar: `#fff1f2` / `#e11d48`
+- Colores de canal (WhatsApp verde, Instagram violeta, Email azul)
+- Progreso de campaña cerrada: `#CBD5E1`
+
+**Otros lineamientos:**
+- **Brand color:** `#fc9a00` (naranja/ámbar). Botones primarios, nav activo, highlights, focus rings.
+- **Typography:** DM Sans (body/UI), DM Mono (datos/código).
+- **Dark mode:** Clase `dark` en `<html>`. localStorage key `ugcflow-theme`. Las superficies dark se mantienen en azul-oscuro frío (#090A0F, #13151E) — el calor en dark mode lo aporta el naranja contra las superficies oscuras.
+- **Styling approach:** CSS vars (`var(--color-*)`) para color semántico via `style={{}}`. Tailwind para layout/spacing. No mezclar arbitrariamente.
+- **Status-color cards:** CampanasTab y ProspeccionTab usan pasteles fijos (no CSS vars) por legibilidad dark/light. Texto dentro de tarjetas pasteles usa hex fijos.
+- **Pagination pattern:** `PAGE_SIZE = 20`, `visibleCount` state, botón "Ver más (N restantes)". Filtros resetean `visibleCount`.
+- **Rounded corners:** `rounded-xl` (12px) para interactivos, `rounded-2xl` (16px) para cards/modales.
+- **Micro-animations:** `transition-all duration-200` + `active:scale-[0.98]` en todos los interactivos.
 
 ### Code Style
 - **Language:** TypeScript (.tsx / .ts). Use explicit types; avoid `any`.

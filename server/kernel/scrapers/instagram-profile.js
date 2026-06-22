@@ -43,14 +43,32 @@ export async function scrapeInstagramProfile(handle) {
 
     function tryUser(json) {
       if (capturedUser) return;
-      const user = json?.data?.user ?? json?.graphql?.user;
+      let user = json?.data?.user ?? json?.graphql?.user;
+
+      // XDT format: Instagram uses dynamic keys like
+      // "xdt_api__v1__users__web_profile_info__connection" — scan all data values
+      if (!user && json?.data && typeof json.data === 'object') {
+        for (const val of Object.values(json.data)) {
+          if (!val || typeof val !== 'object') continue;
+          // Direct user object at data root
+          const fc = val.follower_count ?? val.edge_followed_by?.count;
+          if (fc != null && (val.username || val.full_name)) { user = val; break; }
+          // Wrapped one level deeper: { user: {...} } or { data: { user: {...} } }
+          const nested = val.user ?? val.data?.user;
+          if (nested) {
+            const nfc = nested.follower_count ?? nested.edge_followed_by?.count;
+            if (nfc != null && (nested.username || nested.full_name)) { user = nested; break; }
+          }
+        }
+      }
+
       if (!user) return;
       const seguidores = user.edge_followed_by?.count ?? user.follower_count;
       if (!seguidores) return;
       capturedUser = {
         nombre: user.full_name || user.username,
         seguidores,
-        categoria: user.category_name ?? user.category ?? null,
+        categoria: user.category_name ?? user.business_category_name ?? user.category ?? null,
       };
       resolveUser();
     }
@@ -190,14 +208,10 @@ export async function scrapeInstagramProfile(handle) {
       await new Promise(r => setTimeout(r, 4000));
     }
 
-    // XDT timeline API does not include play_count for Reels. Navigate to the
-    // /reels/ tab which triggers the clips endpoint that does include it.
-    const hasVideosWithoutViews = (capturedPosts ?? []).some(p =>
-      (p.media_type === 2 || p.product_type === 'clips') &&
-      p.play_count == null && p.view_count == null && p.video_view_count == null &&
-      !extraByPk[String(p.pk ?? p.id ?? '').split('_')[0]]?.views
-    );
-    if (capturedUser && hasVideosWithoutViews) {
+    // Always navigate to /reels/ to capture video view counts for promedioVistas.
+    // The clips endpoint only fires when this tab is loaded — the main timeline
+    // does not trigger it, so capturedReelsFeed stays empty for photo-heavy feeds.
+    if (capturedUser) {
       console.log(`[Kernel] ${handle} — navigating to /reels/ tab to fetch view counts`);
       try {
         await page.goto(`https://www.instagram.com/${handle}/reels/`, {
@@ -205,7 +219,7 @@ export async function scrapeInstagramProfile(handle) {
           timeout: 30000,
         });
         await new Promise(r => setTimeout(r, 6000));
-        console.log(`[Kernel] ${handle} — reels tab done | extraByPk keys: ${Object.keys(extraByPk).length}`);
+        console.log(`[Kernel] ${handle} — reels tab done | reelsFeed: ${capturedReelsFeed.length} | extraByPk keys: ${Object.keys(extraByPk).length}`);
       } catch (err) {
         console.warn(`[Kernel] ${handle} — reels tab navigation failed: ${err.message}`);
       }
@@ -369,7 +383,14 @@ async function extractFromPageContext(page) {
 
         try {
           const obj = JSON.parse(text.slice(start, end));
-          if (obj.edge_followed_by?.count || obj.follower_count) return obj;
+          if (obj.edge_followed_by?.count || obj.follower_count) {
+            // Also look for category_name nearby in the same script if not present
+            if (!obj.category_name) {
+              const catMatch = text.match(/"category_name"\s*:\s*"([^"\\]+)"/);
+              if (catMatch?.[1]) obj.category_name = catMatch[1];
+            }
+            return obj;
+          }
         } catch { /* malformed JSON fragment */ }
       }
 

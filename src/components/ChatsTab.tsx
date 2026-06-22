@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { UGC, Mensaje, Canal } from '../data';
 import { avatarColor, getInitials } from '../utils';
+import { sendCreatorMessage } from '../api';
 
 interface Props {
   ugcs: UGC[];
@@ -88,10 +89,11 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
     if (e) e.preventDefault();
     if (!activeUgc || !inputText.trim()) return;
 
+    const texto = inputText.trim();
     const newMsg: Mensaje & { timestamp: number } = {
       id: `msg-${Date.now()}`,
       tipo: 'saliente',
-      texto: inputText.trim(),
+      texto,
       fecha: 'ahora mismo',
       timestamp: Date.now(),
     };
@@ -103,6 +105,9 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
     });
 
     setInputText('');
+
+    sendCreatorMessage(activeUgc.id, 'saliente', texto, 'ahora mismo')
+      .catch(err => console.error('[ChatsTab] Failed to persist message:', err));
   }
 
   // Handle updating creator description/bio

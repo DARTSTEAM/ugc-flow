@@ -3,7 +3,7 @@ import { scrapeInstagramProfile } from './scrapers/instagram-profile.js';
 import { scrapeTikTokProfile } from './scrapers/tiktok-profile.js';
 import { closeAllBrowsers } from './browser-pool.js';
 
-const bq = new BigQuery({ projectId: 'hike-agentic-playground' });
+const bq = new BigQuery({ projectId: 'bigquery-388915' });
 const DATASET = 'ngr_ugc';
 const BATCH_SIZE = 5;
 

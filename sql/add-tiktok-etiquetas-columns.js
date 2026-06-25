@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { BigQuery } from '@google-cloud/bigquery';
 
-const bq = new BigQuery({ projectId: 'hike-agentic-playground' });
+const bq = new BigQuery({ projectId: 'bigquery-388915' });
 const DATASET = 'ngr_ugc';
 
 async function run() {
@@ -9,7 +9,7 @@ async function run() {
 
   try {
     await bq.query({
-      query: `ALTER TABLE \`hike-agentic-playground.${DATASET}.creators\` ADD COLUMN IF NOT EXISTS etiquetas STRING`,
+      query: `ALTER TABLE \`bigquery-388915.${DATASET}.creators\` ADD COLUMN IF NOT EXISTS etiquetas STRING`,
       location: 'US',
     });
     console.log('✓ etiquetas column added (or already existed)');
@@ -19,7 +19,7 @@ async function run() {
 
   try {
     await bq.query({
-      query: `ALTER TABLE \`hike-agentic-playground.${DATASET}.creators\` ADD COLUMN IF NOT EXISTS username_tiktok STRING`,
+      query: `ALTER TABLE \`bigquery-388915.${DATASET}.creators\` ADD COLUMN IF NOT EXISTS username_tiktok STRING`,
       location: 'US',
     });
     console.log('✓ username_tiktok column added (or already existed)');

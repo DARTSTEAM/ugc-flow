@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { BigQuery } from '@google-cloud/bigquery';
 
-const bq = new BigQuery({ projectId: 'hike-agentic-playground' });
+const bq = new BigQuery({ projectId: 'bigquery-388915' });
 const DATASET = 'ngr_ugc';
 
 const COLUMNS = [
@@ -22,7 +22,7 @@ async function run() {
   for (const col of COLUMNS) {
     try {
       await bq.query({
-        query: `ALTER TABLE \`hike-agentic-playground.${DATASET}.creators\` ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}`,
+        query: `ALTER TABLE \`bigquery-388915.${DATASET}.creators\` ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}`,
         location: 'US',
       });
       console.log(`✓ ${col.name} (${col.type})`);

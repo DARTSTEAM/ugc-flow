@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { BigQuery } from '@google-cloud/bigquery';
 
-const bq = new BigQuery({ projectId: 'bigquery-388915' });
+const bq = new BigQuery({ projectId: 'hike-agentic-playground' });
 const DATASET = 'ngr_ugc';
 
 const [rows] = await bq.query({

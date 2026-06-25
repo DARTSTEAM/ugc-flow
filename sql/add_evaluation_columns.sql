@@ -1,6 +1,6 @@
 -- ============================================================
 -- BigQuery schema migrations for evaluation fields
--- Dataset: ngr_ugc  |  Project: bigquery-388915
+-- Dataset: ngr_ugc  |  Project: hike-agentic-playground
 -- Run these in the BigQuery console (one at a time).
 -- ============================================================
 

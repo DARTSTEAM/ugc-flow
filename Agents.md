@@ -10,7 +10,7 @@
 ## 2. Architecture & Key Structure
 
 - **Design Pattern:** Single-page application (SPA) with a co-located Express API server. In dev, the API runs as a Vite middleware plugin (same port, `http://localhost:5173`). In production, the built frontend is served statically by Express (`server/prod.js`) on port 8080 inside a Docker container.
-- **Data source:** Google BigQuery — project `bigquery-388915`, dataset `ngr_ugc`. Tables: `creators`, `messages`, `qualifications`, `creator_scores`, `campaigns`, `campaign_creators`, `brands`.
+- **Data source:** Google BigQuery — project `hike-agentic-playground`, dataset `ngr_ugc`. Tables: `creators`, `messages`, `qualifications`, `creator_scores`, `campaigns`, `campaign_creators`, `brands`.
 - **Authentication:** BigQuery access relies on ambient GCP credentials (ADC). No explicit auth config in code — the deployment environment (Cloud Run) must have the appropriate service account.
 - **Scraping:** Creator profile scraping runs through Kernel.sh (cloud browser). The `server/kernel/` module handles browser pool management and platform-specific scrapers. Required env vars: `KERNEL_API_KEY`, `KERNEL_PROFILE_INSTAGRAM`, `KERNEL_PROXY_ID`, `HEADFUL_PLATFORMS`. See `.env.example` for reference.
 

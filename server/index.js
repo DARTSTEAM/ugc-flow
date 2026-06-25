@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const bq = new BigQuery({ projectId: 'bigquery-388915' });
+const bq = new BigQuery({ projectId: 'hike-agentic-playground' });
 const DATASET = 'ngr_ugc';
 
 function q(sql, params) {

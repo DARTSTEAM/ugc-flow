@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT="bigquery-388915"
+PROJECT="hike-agentic-playground"
 REGION="us-central1"
 SERVICE="ugc-flow"
 

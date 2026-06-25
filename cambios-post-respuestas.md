@@ -11,7 +11,7 @@ Este archivo contiene el análisis completo de los cambios pendientes en la plat
 
 ## Contexto del proyecto
 
-**Stack**: React 19 + TypeScript (Vite) en el frontend, Express.js en el backend, BigQuery como base de datos (proyecto `bigquery-388915`, dataset `ngr_ugc`). Kernel SDK + Playwright para scraping de Instagram.
+**Stack**: React 19 + TypeScript (Vite) en el frontend, Express.js en el backend, BigQuery como base de datos (proyecto `hike-agentic-playground`, dataset `ngr_ugc`). Kernel SDK + Playwright para scraping de Instagram.
 
 **Tabs de la app**: UGCs activos, Prospección, Campañas, Chats.
 
@@ -138,7 +138,7 @@ Palabras o frases que, si el creador las menciona, hacen que el bot deje de resp
 #### BigQuery — tabla `campaigns`
 Agregar dos columnas nuevas en `sql/add_evaluation_columns.sql` y ejecutar migración:
 ```sql
-ALTER TABLE `bigquery-388915.ngr_ugc.campaigns`
+ALTER TABLE `hike-agentic-playground.ngr_ugc.campaigns`
   ADD COLUMN IF NOT EXISTS preguntas_calificacion STRING,  -- JSON array de strings
   ADD COLUMN IF NOT EXISTS keywords_handoff STRING;         -- JSON array de strings
 ```
@@ -180,7 +180,7 @@ Una lista de etiquetas con sus nombres. Prestar atención a si tienen categoría
 #### BigQuery — tabla `creators`
 Verificar si ya existe una columna `etiquetas` o `tags`. Si no existe, agregar:
 ```sql
-ALTER TABLE `bigquery-388915.ngr_ugc.creators`
+ALTER TABLE `hike-agentic-playground.ngr_ugc.creators`
   ADD COLUMN IF NOT EXISTS etiquetas STRING;  -- JSON array de strings
 ```
 

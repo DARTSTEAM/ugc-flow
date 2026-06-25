@@ -3,13 +3,13 @@ steps:
     args:
       - build
       - '-t'
-      - 'us-central1-docker.pkg.dev/bigquery-388915/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
+      - 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
       - '-t'
-      - 'us-central1-docker.pkg.dev/bigquery-388915/mcp-cloud-run-deployments/ugc-flow:latest'
+      - 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:latest'
       - '.'
 
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/bigquery-388915/mcp-cloud-run-deployments/ugc-flow']
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow']
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
@@ -17,15 +17,15 @@ steps:
       - run
       - deploy
       - ugc-flow
-      - '--image=us-central1-docker.pkg.dev/bigquery-388915/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
+      - '--image=us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
       - '--region=us-central1'
       - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--project=bigquery-388915'
+      - '--project=hike-agentic-playground'
 
 images:
-  - 'us-central1-docker.pkg.dev/bigquery-388915/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
-  - 'us-central1-docker.pkg.dev/bigquery-388915/mcp-cloud-run-deployments/ugc-flow:latest'
+  - 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
+  - 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -1,5 +1,7 @@
-import { X, MapPin, Users, TrendingUp, Hash, Calendar, Clock, FileText, Download } from 'lucide-react';
+import { useState } from 'react';
+import { X, MapPin, Users, TrendingUp, Hash, Calendar, Clock, FileText, Download, Trash2 } from 'lucide-react';
 import { getInitials, avatarColor } from '../utils';
+import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export type EstadoBusqueda = 'En progreso' | 'Completada' | 'Borrador';
@@ -77,9 +79,11 @@ function fmtNum(n: number): string {
 interface Props {
   busqueda: Busqueda;
   onClose: () => void;
+  onDelete?: () => void;
 }
 
-export default function BusquedaDrawer({ busqueda, onClose }: Props) {
+export default function BusquedaDrawer({ busqueda, onClose, onDelete }: Props) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const ecfg = ESTADO_CFG[busqueda.estado];
   const resultados = MOCK_RESULTADOS[busqueda.id] || [];
 
@@ -120,15 +124,29 @@ export default function BusquedaDrawer({ busqueda, onClose }: Props) {
               </p>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92] flex-shrink-0"
-            style={{ color: 'var(--color-text-3)' }}
-            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-surface-alt)')}
-            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {onDelete && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                title="Eliminar búsqueda"
+                className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
+                style={{ color: '#e11d48', backgroundColor: '#fff1f2' }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#ffe4e6')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#fff1f2')}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
+              style={{ color: 'var(--color-text-3)' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-surface-alt)')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────── */}
@@ -326,6 +344,13 @@ export default function BusquedaDrawer({ busqueda, onClose }: Props) {
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        open={showDeleteConfirm}
+        itemName={busqueda.nombre}
+        onConfirm={() => { setShowDeleteConfirm(false); onDelete?.(); }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

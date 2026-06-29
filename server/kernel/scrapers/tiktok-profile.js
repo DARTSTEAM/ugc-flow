@@ -87,6 +87,7 @@ export async function scrapeTikTokProfile(handle) {
           diggCount:    Number(st.diggCount    ?? st.likeCount ?? 0),
           commentCount: Number(st.commentCount ?? 0),
           shareCount:   Number(st.shareCount   ?? 0),
+          createTime:   item.createTime != null ? Number(item.createTime) : null,
         });
       }
       if (capturedVideos.length > before) {
@@ -183,10 +184,12 @@ export async function scrapeTikTokProfile(handle) {
       })))
     );
 
-    const engagementRate = calcTikTokEngagementRate(videosForMetrics, capturedUser.seguidores);
-    const promedioVistas = calcTikTokAvgViews(videosForMetrics);
+    const engagementRate    = calcTikTokEngagementRate(videosForMetrics, capturedUser.seguidores);
+    const promedioVistas    = calcTikTokAvgViews(videosForMetrics);
+    const frecuenciaSemanal = calcTikTokFrecuenciaSemanal(capturedVideos);
+    const videosVirales     = calcTikTokVideosVirales(capturedVideos);
 
-    console.log(`[Kernel/TikTok] @${handle} — ER: ${engagementRate} | avgViews: ${promedioVistas} | seguidores: ${capturedUser.seguidores}`);
+    console.log(`[Kernel/TikTok] @${handle} — ER: ${engagementRate} | avgViews: ${promedioVistas} | freq: ${frecuenciaSemanal}/wk | viral: ${videosVirales} | seguidores: ${capturedUser.seguidores}`);
 
     return {
       handle,
@@ -194,6 +197,8 @@ export async function scrapeTikTokProfile(handle) {
       seguidores:   capturedUser.seguidores,
       engagementRate,
       promedioVistas,
+      frecuenciaSemanal,
+      videosVirales,
     };
 
   } catch (err) {
@@ -332,4 +337,43 @@ function calcTikTokAvgViews(videos) {
   if (!withViews.length) return null;
   const total = withViews.reduce((sum, v) => sum + v.playCount, 0);
   return Math.round(total / withViews.length);
+}
+
+/**
+ * Average posts per week based on videos within the last 60 days.
+ * Uses createTime (Unix seconds). Returns null if no timestamps available.
+ */
+function calcTikTokFrecuenciaSemanal(videos) {
+  const now = Math.floor(Date.now() / 1000);
+  const sixtyDaysAgo = now - 60 * 24 * 3600;
+
+  const recent = videos.filter(v => v.createTime != null && v.createTime > sixtyDaysAgo);
+  if (!recent.length) return null;
+
+  const WEEKS = 60 / 7;
+  return parseFloat((recent.length / WEEKS).toFixed(2));
+}
+
+/**
+ * Count of videos in the last 60 days whose play count exceeds 3× the average
+ * play count of the remaining videos (viral = outlier by 3x).
+ */
+function calcTikTokVideosVirales(videos) {
+  const now = Math.floor(Date.now() / 1000);
+  const sixtyDaysAgo = now - 60 * 24 * 3600;
+
+  const withTs  = videos.filter(v => v.createTime != null);
+  const inRange = withTs.filter(v => v.createTime > sixtyDaysAgo && v.playCount > 0);
+  console.log(`[Kernel/TikTok] calcVideosVirales: ${videos.length} videos | ${withTs.length} with timestamp | ${inRange.length} within 60 days`);
+
+  // Fall back to all videos with playCount if timestamps are missing
+  const pool = inRange.length >= 2 ? inRange.map(v => v.playCount) : videos.filter(v => v.playCount > 0).map(v => v.playCount);
+
+  if (pool.length < 2) return 0;
+
+  const total = pool.reduce((s, v) => s + v, 0);
+  return pool.filter(v => {
+    const othersAvg = (total - v) / (pool.length - 1);
+    return v > 3 * othersAvg;
+  }).length;
 }

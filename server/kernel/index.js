@@ -1,7 +1,8 @@
 import { BigQuery } from '@google-cloud/bigquery';
 import { scrapeInstagramProfile } from './scrapers/instagram-profile.js';
 import { scrapeTikTokProfile } from './scrapers/tiktok-profile.js';
-import { closeAllBrowsers } from './browser-pool.js';
+import { closeAllBrowsers, closeBrowser } from './browser-pool.js';
+import { recalcularScore } from '../score-service.js';
 
 const bq = new BigQuery({ projectId: 'hike-agentic-playground' });
 const DATASET = 'ngr_ugc';
@@ -28,9 +29,10 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
  *
  * @param {() => Promise<{ok:boolean, error?:string}>} fn
  * @param {string} label — shown in logs
+ * @param {() => Promise<void>} [onRetry] — optional cleanup called before each retry
  * @returns {Promise<{ok:boolean, error?:string}>}
  */
-async function withRetry(fn, label) {
+async function withRetry(fn, label, onRetry) {
   const maxAttempts = MAX_RETRIES + 1;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let result;
@@ -39,6 +41,7 @@ async function withRetry(fn, label) {
     } catch (err) {
       if (attempt >= maxAttempts) throw err;
       console.warn(`[Kernel] ${label} — attempt ${attempt}/${maxAttempts} threw: ${err.message} — retrying in ${RETRY_DELAY}ms`);
+      if (onRetry) await onRetry().catch(() => {});
       await sleep(RETRY_DELAY);
       continue;
     }
@@ -49,8 +52,9 @@ async function withRetry(fn, label) {
     // Success or last attempt — return as-is
     if (result?.ok || attempt >= maxAttempts) return result;
 
-    // Retryable failure
+    // Retryable failure — reset browser before next attempt so it's a clean session
     console.warn(`[Kernel] ${label} — attempt ${attempt}/${maxAttempts} failed (${result.error}) — retrying in ${RETRY_DELAY}ms`);
+    if (onRetry) await onRetry().catch(() => {});
     await sleep(RETRY_DELAY);
   }
 }
@@ -165,7 +169,8 @@ export async function scrapeTikTokProfiles(creatorIds) {
         batch.map(creator =>
           withRetry(
             () => scrapeAndSaveTikTok(creator),
-            `TT @${creator.username_tiktok ?? creator.creator_id}`
+            `TT @${creator.username_tiktok ?? creator.creator_id}`,
+            () => closeBrowser('tiktok')   // fresh Kernel session before each retry
           )
         )
       );
@@ -214,6 +219,8 @@ async function scrapeAndSaveInstagram(creator) {
         eval_perfil_promedio_vistas        = @promedioVistas,
         eval_perfil_categoria              = @categoria,
         eval_perfil_rango_edad_seguidores  = NULL,
+        eval_perfil_frecuencia_semanal     = @frecuenciaSemanal,
+        eval_perfil_videos_virales         = @videosVirales,
         eval_perfil_last_scraped_at        = CURRENT_TIMESTAMP()
       WHERE creator_id = @id
     `,
@@ -225,15 +232,23 @@ async function scrapeAndSaveInstagram(creator) {
       engagementRate: data.engagementRateCuenta ?? null,
       promedioVistas: data.promedioVistaVideos ?? null,
       categoria: data.categoria ?? null,
+      frecuenciaSemanal: data.frecuenciaSemanal ?? null,
+      videosVirales: data.videosVirales ?? null,
     },
     types: {
       seguidores: 'INT64',
       engagementRate: 'FLOAT64',
       promedioVistas: 'INT64',
       categoria: 'STRING',
+      frecuenciaSemanal: 'FLOAT64',
+      videosVirales: 'INT64',
     },
     location: 'US',
   });
+
+  await recalcularScore(creator.creator_id).catch(err =>
+    console.warn(`[Kernel] score recalc failed for ${creator.creator_id}:`, err.message)
+  );
 
   return { ok: true };
 }
@@ -252,25 +267,35 @@ async function scrapeAndSaveTikTok(creator) {
   await bq.query({
     query: `
       UPDATE ${DATASET}.creators SET
-        tiktok_eval_seguidores      = @seguidores,
-        tiktok_eval_engagement_rate = @engagementRate,
-        tiktok_eval_promedio_vistas = @promedioVistas,
-        tiktok_eval_last_scraped_at = CURRENT_TIMESTAMP()
+        tiktok_eval_seguidores         = @seguidores,
+        tiktok_eval_engagement_rate    = @engagementRate,
+        tiktok_eval_promedio_vistas    = @promedioVistas,
+        tiktok_eval_frecuencia_semanal = @frecuenciaSemanal,
+        tiktok_eval_videos_virales     = @videosVirales,
+        tiktok_eval_last_scraped_at    = CURRENT_TIMESTAMP()
       WHERE creator_id = @id
     `,
     params: {
       id: creator.creator_id,
-      seguidores:    data.seguidores   ?? null,
-      engagementRate: data.engagementRate ?? null,
-      promedioVistas: data.promedioVistas ?? null,
+      seguidores:       data.seguidores        ?? null,
+      engagementRate:   data.engagementRate    ?? null,
+      promedioVistas:   data.promedioVistas    ?? null,
+      frecuenciaSemanal: data.frecuenciaSemanal ?? null,
+      videosVirales:    data.videosVirales     ?? null,
     },
     types: {
-      seguidores:    'INT64',
-      engagementRate: 'FLOAT64',
-      promedioVistas: 'INT64',
+      seguidores:        'INT64',
+      engagementRate:    'FLOAT64',
+      promedioVistas:    'INT64',
+      frecuenciaSemanal: 'FLOAT64',
+      videosVirales:     'INT64',
     },
     location: 'US',
   });
+
+  await recalcularScore(creator.creator_id).catch(err =>
+    console.warn(`[Kernel/TikTok] score recalc failed for ${creator.creator_id}:`, err.message)
+  );
 
   return { ok: true };
 }

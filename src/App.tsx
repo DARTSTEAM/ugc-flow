@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Users, Megaphone, Bell, ChevronRight, Sun, Moon, MessageSquare, ScanSearch, Star } from 'lucide-react';
-import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign, assignCreatorToCampaign } from './api';
+import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign, assignCreatorToCampaign, deleteCampaign } from './api';
 import type { UGC, Campana, EstadoEnCampana } from './data';
 import UGCsTab from './components/UGCsTab';
 import ChatsTab from './components/ChatsTab';
@@ -128,6 +128,16 @@ export default function App() {
   }
 
   // ── Campaign handlers ─────────────────────────────────────────────
+  async function handleDeleteCampana(campana: Campana) {
+    try {
+      await deleteCampaign(campana.id);
+      setCampanas(prev => prev.filter(c => c.id !== campana.id));
+      setSelectedCampana(null);
+    } catch (err) {
+      console.error('Failed to delete campaign:', err);
+    }
+  }
+
   async function handleTogglePause(campana: Campana) {
     const newEstado = campana.estado === 'Pausada' ? 'Activa' : 'Pausada';
     try {
@@ -497,6 +507,7 @@ export default function App() {
               onBack={() => setSelectedCampana(null)}
               onTogglePause={handleTogglePause}
               onLanzar={handleLanzar}
+              onDeleteCampana={handleDeleteCampana}
             />
           )}
           {activeTab === 'recomendaciones' && (

@@ -33,6 +33,56 @@ function estadoCampanaStyle(estado: string): React.CSSProperties {
   }
 }
 
+// ─── Score sub-metric helpers (mirror of server/score-calculator.js) ─────────
+
+type SubScore = { pts: number; max: number; value: string | null };
+
+function ssSeguidores(seg: number | null): SubScore {
+  if (seg == null) return { pts: 0, max: 20, value: null };
+  const pts = seg >= 100_000 ? 20 : seg >= 50_000 ? 15 : seg >= 20_000 ? 10 : seg >= 10_000 ? 5 : 0;
+  return { pts, max: 20, value: seg >= 1_000_000 ? (seg / 1_000_000).toFixed(1) + 'M' : seg.toLocaleString('es-AR') };
+}
+function ssER(er: number | null): SubScore {
+  if (er == null) return { pts: 0, max: 20, value: null };
+  const pts = er >= 6 ? 20 : er >= 4 ? 17 : er >= 2 ? 13 : er >= 1 ? 8 : er > 0 ? 3 : 0;
+  return { pts, max: 20, value: er.toFixed(2) + '%' };
+}
+function ssFreq(freq: number | null): SubScore {
+  if (freq == null) return { pts: 0, max: 20, value: null };
+  const pts = (freq >= 2 && freq <= 5) ? 20 : freq >= 1 ? 12 : freq > 0 ? 6 : 0;
+  return { pts, max: 20, value: freq.toFixed(2) + '/sem' };
+}
+function ssVirales(count: number | null): SubScore {
+  if (count == null) return { pts: 0, max: 15, value: null };
+  const pts = count >= 3 ? 15 : count === 2 ? 10 : count === 1 ? 5 : 0;
+  return { pts, max: 15, value: count + (count === 1 ? ' video' : ' videos') };
+}
+function ssCTR(ctr: number | null): SubScore {
+  if (ctr == null) return { pts: 0, max: 5, value: null };
+  const pts = ctr >= 2 ? 5 : ctr >= 1 ? 3 : ctr > 0 ? 1 : 0;
+  return { pts, max: 5, value: ctr.toFixed(2) + '%' };
+}
+function ssVTR(vtr: number | null): SubScore {
+  if (vtr == null) return { pts: 0, max: 5, value: null };
+  const pts = vtr >= 40 ? 5 : vtr >= 20 ? 3 : vtr > 0 ? 1 : 0;
+  return { pts, max: 5, value: vtr.toFixed(1) + '%' };
+}
+function ssCPM(cpm: number | null): SubScore {
+  if (cpm == null) return { pts: 0, max: 5, value: null };
+  const pts = cpm <= 3 ? 5 : cpm <= 5 ? 4 : cpm <= 10 ? 3 : cpm <= 20 ? 1 : 0;
+  return { pts, max: 5, value: '$' + cpm.toFixed(2) };
+}
+function ssVistas(v: number | null): SubScore {
+  if (v == null) return { pts: 0, max: 5, value: null };
+  const pts = v >= 500_000 ? 5 : v >= 200_000 ? 4 : v >= 50_000 ? 3 : v >= 10_000 ? 1 : 0;
+  return { pts, max: 5, value: v >= 1_000_000 ? (v / 1_000_000).toFixed(1) + 'M' : v.toLocaleString('es-AR') };
+}
+function ssERPauta(er: number | null): SubScore {
+  if (er == null) return { pts: 0, max: 5, value: null };
+  const pts = er >= 4 ? 5 : er >= 2 ? 3 : er >= 1 ? 1 : 0;
+  return { pts, max: 5, value: er.toFixed(2) + '%' };
+}
+
 // ─── Reusable form field ─────────────────────────────────────────────────────
 function FormField({
   label, value, onChange, type = 'number', placeholder, unit, hint, tooltip,
@@ -213,15 +263,16 @@ export default function UGCDrawer({
 }: Props) {
   const [ugc, setUgc] = useState<UGC>(ugcProp);
   const [loadingDetail, setLoadingDetail] = useState(true);
+  const [loadDetailError, setLoadDetailError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DrawerTab>(initialTab);
 
   // Organic form state
   const [orgViews, setOrgViews] = useState('');
   const [orgShares, setOrgShares] = useState('');
   const [orgER, setOrgER] = useState('');
-  const [orgHook, setOrgHook] = useState('');
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgEditing, setOrgEditing] = useState(false);
+  const [orgSaveError, setOrgSaveError] = useState<string | null>(null);
 
   // Kernel scrape state — Instagram
   const [scrapeLoading, setScrapeLoading] = useState(false);
@@ -253,8 +304,11 @@ export default function UGCDrawer({
   const [pFrecuencia, setPFrecuencia] = useState('');
   const [pCTR, setPCTR] = useState('');
   const [pVTR, setPVTR] = useState('');
+  const [pVistas, setPVistas] = useState('');
+  const [pER, setPER] = useState('');
   const [pautaSaving, setPautaSaving] = useState(false);
   const [pautaEditing, setPautaEditing] = useState(false);
+  const [pautaSaveError, setPautaSaveError] = useState<string | null>(null);
 
   // Accordions & dropdowns
   const [scoreBreakdownOpen, setScoreBreakdownOpen] = useState(false);
@@ -265,6 +319,7 @@ export default function UGCDrawer({
     let cancelled = false;
     async function loadDetail() {
       try {
+        setLoadDetailError(null);
         setLoadingDetail(true);
         const detail = await fetchCreatorDetail(ugcProp.id);
         if (!cancelled) {
@@ -278,7 +333,6 @@ export default function UGCDrawer({
             setOrgViews(o.views?.toString() ?? '');
             setOrgShares(o.shares?.toString() ?? '');
             setOrgER(o.engagementRate?.toString() ?? '');
-            setOrgHook(o.hookNatural?.toString() ?? '');
           }
           if (merged.evaluacionPauta) {
             const p = merged.evaluacionPauta;
@@ -288,11 +342,16 @@ export default function UGCDrawer({
             setPFrecuencia(p.frecuencia?.toString() ?? '');
             setPCTR(p.ctr?.toString() ?? '');
             setPVTR(p.vtr?.toString() ?? '');
+            setPVistas(p.vistas?.toString() ?? '');
+            setPER(p.er?.toString() ?? '');
           }
         }
       } catch (err) {
         console.error('Failed to load creator detail:', err);
-        if (!cancelled) setUgc(ugcProp);
+        if (!cancelled) {
+          setUgc(ugcProp);
+          setLoadDetailError(err instanceof Error ? err.message : 'Error al cargar datos');
+        }
       } finally {
         if (!cancelled) setLoadingDetail(false);
       }
@@ -310,7 +369,42 @@ export default function UGCDrawer({
   const av = avatarColor(ugc.id);
   const sc = scoreColor(ugc.score);
   const estadoConfig = ESTADO_UGC_CONFIG[ugc.estado];
-  const totalScore = (ugc.scoreBreakdown || []).reduce((a, b) => a + b.puntos, 0);
+
+  // ── Score breakdown computation ──────────────────────────────────────────
+  const ep   = ugc.evaluacionPerfil;
+  const ept  = ugc.evaluacionPerfilTiktok;
+  const epau = ugc.evaluacionPauta;
+
+  // Prefer Instagram, fall back to TikTok
+  const bSeg   = ep?.seguidores ?? ept?.seguidores ?? null;
+  const bER    = ep != null ? (ep.engagementRateCuenta ?? null) : (ept?.engagementRate ?? null);
+  const bFreq  = ep?.frecuenciaSemanal ?? ept?.frecuenciaSemanal ?? null;
+  // Viral: null if neither platform scraped; otherwise sum of both (may be 0)
+  const igVirales = ep?.videosVirales ?? null;
+  const ttVirales = ept?.videosVirales ?? null;
+  const bVirales  = igVirales == null && ttVirales == null ? null : (igVirales ?? 0) + (ttVirales ?? 0);
+
+  const bCPM    = epau?.cpm    != null ? epau.cpm    : null;
+  const bCTR    = epau?.ctr    != null ? epau.ctr    : null;
+  const bVTR    = epau?.vtr    != null ? epau.vtr    : null;
+  const bVistas = epau?.vistas != null ? epau.vistas : null;
+  const bERPauta = epau?.er    != null ? epau.er     : null;
+
+  const sSeg    = ssSeguidores(bSeg);
+  const sER     = ssER(bER);
+  const sFreq   = ssFreq(bFreq);
+  const sViral  = ssVirales(bVirales);
+  const sCTR    = ssCTR(bCTR);
+  const sVTR    = ssVTR(bVTR);
+  const sCPM    = ssCPM(bCPM);
+  const sVistas = ssVistas(bVistas);
+  const sERPau  = ssERPauta(bERPauta);
+
+  const perfilPts  = Math.min(60, sSeg.pts + sER.pts + sFreq.pts);
+  const orgPts     = Math.min(25, sViral.pts + sCTR.pts + sVTR.pts);
+  const pautaPts   = Math.min(15, sCPM.pts + sVistas.pts + sERPau.pts);
+
+  const hasEvalData = !!ep || !!ept || !!epau;
 
   // Estado dropdown
   const [estadoOpen, setEstadoOpen] = useState(false);
@@ -414,12 +508,12 @@ export default function UGCDrawer({
 
   async function handleSaveOrganica() {
     setOrgSaving(true);
+    setOrgSaveError(null);
     try {
       const data: Omit<EvaluacionOrganica, 'completado'> = {
         views: orgViews ? parseFloat(orgViews) : undefined,
         shares: orgShares ? parseFloat(orgShares) : undefined,
         engagementRate: orgER ? parseFloat(orgER) : undefined,
-        hookNatural: orgHook ? parseFloat(orgHook) : undefined,
       };
       await updateEvaluacionOrganica(ugc.id, data);
       const updated: UGC = {
@@ -429,8 +523,8 @@ export default function UGCDrawer({
       setUgc(updated);
       onUpdateUGC(updated);
       setOrgEditing(false);
-    } catch (err) {
-      console.error('Error saving evaluación orgánica:', err);
+    } catch (err: any) {
+      setOrgSaveError(err?.message ?? 'Error al guardar. Intentá de nuevo.');
     } finally {
       setOrgSaving(false);
     }
@@ -438,6 +532,7 @@ export default function UGCDrawer({
 
   async function handleSavePauta() {
     setPautaSaving(true);
+    setPautaSaveError(null);
     try {
       const data: Omit<EvaluacionPauta, 'completado'> = {
         impresiones: pImpresiones ? parseFloat(pImpresiones) : undefined,
@@ -446,17 +541,21 @@ export default function UGCDrawer({
         frecuencia: pFrecuencia ? parseFloat(pFrecuencia) : undefined,
         ctr: pCTR ? parseFloat(pCTR) : undefined,
         vtr: pVTR ? parseFloat(pVTR) : undefined,
+        vistas: pVistas ? parseFloat(pVistas) : undefined,
+        er: pER ? parseFloat(pER) : undefined,
       };
-      await updateEvaluacionPauta(ugc.id, data);
+      const result = await updateEvaluacionPauta(ugc.id, data);
       const updated: UGC = {
         ...ugc,
+        score: result?.total ?? ugc.score,
+        scoreBreakdown: result?.breakdown ?? ugc.scoreBreakdown,
         evaluacionPauta: { ...data, completado: true },
       };
       setUgc(updated);
       onUpdateUGC(updated);
       setPautaEditing(false);
-    } catch (err) {
-      console.error('Error saving evaluación pauta:', err);
+    } catch (err: any) {
+      setPautaSaveError(err?.message ?? 'Error al guardar. Intentá de nuevo.');
     } finally {
       setPautaSaving(false);
     }
@@ -481,7 +580,11 @@ export default function UGCDrawer({
 
     // Instagram result
     if (igResult.status === 'fulfilled' && igResult.value?.ok && igResult.value.evaluacionPerfil) {
-      updatedUgc = { ...updatedUgc, evaluacionPerfil: igResult.value.evaluacionPerfil };
+      updatedUgc = {
+        ...updatedUgc,
+        evaluacionPerfil: igResult.value.evaluacionPerfil,
+        score: igResult.value.updatedScore ?? updatedUgc.score,
+      };
       setScrapeSuccess(true);
       setTimeout(() => setScrapeSuccess(false), 3000);
     } else {
@@ -495,7 +598,11 @@ export default function UGCDrawer({
     // TikTok result
     if (ugc.usernameTiktok) {
       if (ttResult.status === 'fulfilled' && ttResult.value?.ok && ttResult.value?.evaluacionPerfilTiktok) {
-        updatedUgc = { ...updatedUgc, evaluacionPerfilTiktok: ttResult.value.evaluacionPerfilTiktok };
+        updatedUgc = {
+          ...updatedUgc,
+          evaluacionPerfilTiktok: ttResult.value.evaluacionPerfilTiktok,
+          score: ttResult.value.updatedScore ?? updatedUgc.score,
+        };
         setTiktokScrapeSuccess(true);
         setTimeout(() => setTiktokScrapeSuccess(false), 3000);
       } else {
@@ -764,15 +871,15 @@ export default function UGCDrawer({
           {/* Score — clickable, expands breakdown */}
           <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
             <button
-              onClick={() => ugc.scoreBreakdown?.length && setScoreBreakdownOpen(o => !o)}
+              onClick={() => hasEvalData && setScoreBreakdownOpen(o => !o)}
               className="w-full p-3 text-left"
-              style={{ cursor: ugc.scoreBreakdown?.length ? 'pointer' : 'default' }}
+              style={{ cursor: hasEvalData ? 'pointer' : 'default' }}
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-2)' }}>Score total</span>
                 <div className="flex items-center gap-1.5">
                   <span className={`font-mono font-bold text-lg ${sc.text}`}>{ugc.score}</span>
-                  {!!ugc.scoreBreakdown?.length && (
+                  {hasEvalData && (
                     <ChevronDown
                       className="w-3.5 h-3.5 transition-transform duration-300"
                       style={{
@@ -791,31 +898,121 @@ export default function UGCDrawer({
               </div>
             </button>
 
-            {/* Animated breakdown */}
+            {/* Animated breakdown — detailed sub-metrics */}
             <div
               style={{
-                maxHeight: scoreBreakdownOpen ? '320px' : '0',
+                maxHeight: scoreBreakdownOpen ? '600px' : '0',
                 overflow: 'hidden',
-                transition: 'max-height 0.32s ease-in-out',
+                transition: 'max-height 0.4s ease-in-out',
               }}
             >
-              <div className="px-3 pb-3 pt-1 space-y-2.5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                {(ugc.scoreBreakdown || []).map((s, i) => (
-                  <div key={i}>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs" style={{ color: 'var(--color-text-2)' }}>{s.criterio}</span>
-                      <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-1)' }}>
-                        {s.puntos}<span style={{ color: 'var(--color-text-3)' }}>/{s.maximo}</span>
-                      </span>
+              <div className="px-3 pb-3 pt-2 space-y-3 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+
+                {/* ── Evaluación de perfil ── */}
+                {(() => {
+                  const subs: { label: string; sub: SubScore }[] = [
+                    { label: 'Seguidores',        sub: sSeg },
+                    { label: 'ER de cuenta',       sub: sER  },
+                    { label: 'Frecuencia semanal', sub: sFreq },
+                  ];
+                  return (
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-semibold" style={{ color: 'var(--color-text-1)' }}>Evaluación de perfil</span>
+                        <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-1)' }}>
+                          {perfilPts}<span style={{ color: 'var(--color-text-3)' }}>/60</span>
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden mb-2" style={{ backgroundColor: 'var(--color-border)' }}>
+                        <div className={`h-full ${sc.bar} rounded-full`} style={{ width: `${(perfilPts / 60) * 100}%` }} />
+                      </div>
+                      <div className="space-y-1 pl-2 border-l" style={{ borderColor: 'var(--color-border)' }}>
+                        {subs.map(({ label, sub }) => (
+                          <div key={label} className="flex justify-between items-center">
+                            <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>{label}</span>
+                            <div className="flex items-center gap-2">
+                              {sub.value && <span className="text-[10px] font-mono" style={{ color: 'var(--color-text-2)' }}>{sub.value}</span>}
+                              <span className="text-[10px] font-mono font-bold" style={{ color: sub.pts > 0 ? 'var(--color-text-1)' : 'var(--color-text-3)' }}>
+                                {sub.value == null ? '—' : `${sub.pts}/${sub.max}`}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
-                      <div
-                        className={`h-full ${scoreColor(totalScore).bar} rounded-full transition-all duration-500`}
-                        style={{ width: `${(s.puntos / s.maximo) * 100}%` }}
-                      />
+                  );
+                })()}
+
+                {/* ── Contenido orgánico ── */}
+                {(() => {
+                  const subs: { label: string; sub: SubScore }[] = [
+                    { label: 'Videos virales (×3 avg)', sub: sViral },
+                    { label: 'CTR',                      sub: sCTR   },
+                    { label: 'VTR',                      sub: sVTR   },
+                  ];
+                  return (
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-semibold" style={{ color: 'var(--color-text-1)' }}>Contenido orgánico</span>
+                        <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-1)' }}>
+                          {orgPts}<span style={{ color: 'var(--color-text-3)' }}>/25</span>
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden mb-2" style={{ backgroundColor: 'var(--color-border)' }}>
+                        <div className={`h-full ${sc.bar} rounded-full`} style={{ width: `${(orgPts / 25) * 100}%` }} />
+                      </div>
+                      <div className="space-y-1 pl-2 border-l" style={{ borderColor: 'var(--color-border)' }}>
+                        {subs.map(({ label, sub }) => (
+                          <div key={label} className="flex justify-between items-center">
+                            <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>{label}</span>
+                            <div className="flex items-center gap-2">
+                              {sub.value && <span className="text-[10px] font-mono" style={{ color: 'var(--color-text-2)' }}>{sub.value}</span>}
+                              <span className="text-[10px] font-mono font-bold" style={{ color: sub.pts > 0 ? 'var(--color-text-1)' : 'var(--color-text-3)' }}>
+                                {sub.value == null ? '—' : `${sub.pts}/${sub.max}`}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })()}
+
+                {/* ── KPIs de pauta ── */}
+                {(() => {
+                  const subs: { label: string; sub: SubScore }[] = [
+                    { label: 'CPM',         sub: sCPM    },
+                    { label: 'Vistas paid', sub: sVistas  },
+                    { label: 'ER paid',     sub: sERPau  },
+                  ];
+                  return (
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-xs font-semibold" style={{ color: 'var(--color-text-1)' }}>KPIs de pauta</span>
+                        <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-1)' }}>
+                          {pautaPts}<span style={{ color: 'var(--color-text-3)' }}>/15</span>
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden mb-2" style={{ backgroundColor: 'var(--color-border)' }}>
+                        <div className={`h-full ${sc.bar} rounded-full`} style={{ width: `${(pautaPts / 15) * 100}%` }} />
+                      </div>
+                      <div className="space-y-1 pl-2 border-l" style={{ borderColor: 'var(--color-border)' }}>
+                        {subs.map(({ label, sub }) => (
+                          <div key={label} className="flex justify-between items-center">
+                            <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>{label}</span>
+                            <div className="flex items-center gap-2">
+                              {sub.value && <span className="text-[10px] font-mono" style={{ color: 'var(--color-text-2)' }}>{sub.value}</span>}
+                              <span className="text-[10px] font-mono font-bold" style={{ color: sub.pts > 0 ? 'var(--color-text-1)' : 'var(--color-text-3)' }}>
+                                {sub.value == null ? '—' : `${sub.pts}/${sub.max}`}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
             </div>
           </div>
@@ -835,6 +1032,15 @@ export default function UGCDrawer({
             <div className="flex items-center justify-center py-16">
               <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--color-brand)' }} />
               <span className="ml-2 text-sm" style={{ color: 'var(--color-text-3)' }}>Cargando detalle...</span>
+            </div>
+          ) : loadDetailError ? (
+            <div className="mx-6 mt-4 flex items-start gap-2 px-3 py-2.5 rounded-xl"
+                 style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: 'rgb(239,68,68)' }} />
+              <div>
+                <p className="text-xs font-semibold" style={{ color: 'rgb(185,28,28)' }}>Error al cargar el detalle</p>
+                <p className="text-xs mt-0.5" style={{ color: 'rgb(185,28,28)', opacity: 0.8 }}>{loadDetailError}</p>
+              </div>
             </div>
           ) : (
 
@@ -895,8 +1101,10 @@ export default function UGCDrawer({
                         <div className="rounded-xl p-3 border" style={{ backgroundColor: 'rgba(20,184,166,0.03)', borderColor: 'rgba(20,184,166,0.15)' }}>
                           <MetricRow label="Handle" value={ugc.evaluacionPerfil.perfil} />
                           <MetricRow label="Seguidores" value={ugc.evaluacionPerfil.seguidores.toLocaleString('es-AR')} />
-                          <MetricRow label="ER Cuenta" value={ugc.evaluacionPerfil.engagementRateCuenta} unit="%" tooltip="(Likes + Comentarios) ÷ (Posts × Seguidores) × 100. Se calculan los últimos 5 posts sin pinnear con likes visibles." />
-                          <MetricRow label="Promedio Vistas" value={ugc.evaluacionPerfil.promedioVistaVideos?.toLocaleString('es-AR')} tooltip="Promedio de reproducciones de los últimos 5 Reels publicados en el perfil." />
+                          <MetricRow label="ER Cuenta" value={ugc.evaluacionPerfil.engagementRateCuenta} unit="%" tooltip="(Likes + Comentarios) ÷ (Posts × Seguidores) × 100. Últimos 5 posts sin pinnear con likes visibles." />
+                          <MetricRow label="Promedio Vistas" value={ugc.evaluacionPerfil.promedioVistaVideos?.toLocaleString('es-AR')} tooltip="Promedio de reproducciones de los últimos 5 Reels del perfil." />
+                          <MetricRow label="Frecuencia semanal" value={ugc.evaluacionPerfil.frecuenciaSemanal != null ? `${ugc.evaluacionPerfil.frecuenciaSemanal} posts/sem` : undefined} tooltip="Promedio de posts publicados por semana en los últimos 60 días." />
+                          <MetricRow label="Videos virales" value={ugc.evaluacionPerfil.videosVirales != null ? `${ugc.evaluacionPerfil.videosVirales}` : undefined} tooltip="Videos en los últimos 60 días cuyas vistas superan 3× el promedio del resto." />
                           <MetricRow label="Categoría" value={ugc.evaluacionPerfil.categoria} />
                         </div>
                       ) : (
@@ -936,8 +1144,10 @@ export default function UGCDrawer({
                           <div className="rounded-xl p-3 border" style={{ backgroundColor: 'rgba(20,184,166,0.03)', borderColor: 'rgba(20,184,166,0.15)' }}>
                             <MetricRow label="Handle" value={`@${ugc.evaluacionPerfilTiktok.handle}`} />
                             <MetricRow label="Seguidores" value={ugc.evaluacionPerfilTiktok.seguidores.toLocaleString('es-AR')} />
-                            <MetricRow label="ER" value={ugc.evaluacionPerfilTiktok.engagementRate} unit="%" tooltip="(Likes + Comentarios) ÷ (Videos × Seguidores) × 100. Se calculan los últimos 5 videos sin pinnear." />
+                            <MetricRow label="ER" value={ugc.evaluacionPerfilTiktok.engagementRate} unit="%" tooltip="(Likes + Comentarios) ÷ (Videos × Seguidores) × 100. Últimos 5 videos sin pinnear." />
                             <MetricRow label="Promedio Vistas" value={ugc.evaluacionPerfilTiktok.promedioVistas?.toLocaleString('es-AR')} tooltip="Promedio de reproducciones de los últimos 5 videos sin pinnear del perfil." />
+                            <MetricRow label="Frecuencia semanal" value={ugc.evaluacionPerfilTiktok.frecuenciaSemanal != null ? `${ugc.evaluacionPerfilTiktok.frecuenciaSemanal} posts/sem` : undefined} tooltip="Promedio de videos publicados por semana en los últimos 60 días." />
+                            <MetricRow label="Videos virales" value={ugc.evaluacionPerfilTiktok.videosVirales != null ? `${ugc.evaluacionPerfilTiktok.videosVirales}` : undefined} tooltip="Videos en los últimos 60 días cuyas vistas superan 3× el promedio del resto." />
                           </div>
                         ) : (
                           <div className="flex items-center gap-2 px-3 py-2 rounded-xl border"
@@ -1136,8 +1346,8 @@ export default function UGCDrawer({
                 <div className="px-6 py-4">
                   <div className="flex items-center justify-between mb-3">
                     <div>
-                      <h3 className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>Evaluación de Contenido Orgánico</h3>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>Cada variable pondera 25% del score orgánico</p>
+                      <h3 className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>Contenido Orgánico de Campaña</h3>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>Métricas orgánicas del creador en campaña (referencia)</p>
                     </div>
                     <div className="flex-shrink-0 ml-2">
                       {ugc.evaluacionOrganica?.completado && !orgEditing ? (
@@ -1161,32 +1371,20 @@ export default function UGCDrawer({
                         <span className="text-xs font-semibold" style={{ color: 'rgb(22,163,74)' }}>Evaluación completa</span>
                       </div>
                       <div className="px-4 py-2">
-                        <MetricRow label="Views promedio (25%)" value={ugc.evaluacionOrganica.views?.toLocaleString('es-AR')} />
-                        <MetricRow label="Shares promedio (25%)" value={ugc.evaluacionOrganica.shares?.toLocaleString('es-AR')} />
-                        <MetricRow label="Engagement Rate (25%)" value={ugc.evaluacionOrganica.engagementRate} unit="%" />
-                        <MetricRow label="Hook Natural (25%)" value={ugc.evaluacionOrganica.hookNatural ? `${ugc.evaluacionOrganica.hookNatural}/10` : undefined} />
+                        <MetricRow label="Views promedio" value={ugc.evaluacionOrganica.views?.toLocaleString('es-AR')} />
+                        <MetricRow label="Shares promedio" value={ugc.evaluacionOrganica.shares?.toLocaleString('es-AR')} />
+                        <MetricRow label="Engagement Rate" value={ugc.evaluacionOrganica.engagementRate} unit="%" />
                       </div>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
                       <div className="grid grid-cols-2 gap-2.5">
-                        <FormField label="Views promedio" unit="25%" value={orgViews} onChange={setOrgViews} placeholder="ej: 12500"
-                          tooltip="Promedio de reproducciones por video en los últimos posteos orgánicos." />
-                        <FormField label="Shares promedio" unit="25%" value={orgShares} onChange={setOrgShares} placeholder="ej: 340"
-                          tooltip="Promedio de veces que se compartió cada video orgánico." />
-                        <FormField label="Engagement Rate" unit="% · 25%" value={orgER} onChange={setOrgER} placeholder="ej: 4.2"
-                          tooltip="(Likes + Comentarios) ÷ Alcance × 100, promediado en los últimos posteos." />
-                        <FormField
-                          label="Hook Natural"
-                          unit="1–10 · 25%"
-                          value={orgHook}
-                          onChange={v => {
-                            const n = parseFloat(v);
-                            if (v === '' || (n >= 1 && n <= 10)) setOrgHook(v);
-                          }}
-                          placeholder="ej: 8"
-                          tooltip="Puntuación subjetiva del 1 al 10 sobre qué tan efectivo es el arranque del video para retener al espectador."
-                        />
+                        <FormField label="Views promedio" value={orgViews} onChange={setOrgViews} placeholder="ej: 12500"
+                          tooltip="Promedio de reproducciones por video en los últimos posteos orgánicos de campaña." />
+                        <FormField label="Shares promedio" value={orgShares} onChange={setOrgShares} placeholder="ej: 340"
+                          tooltip="Promedio de veces que se compartió cada video orgánico de campaña." />
+                        <FormField label="Engagement Rate" unit="%" value={orgER} onChange={setOrgER} placeholder="ej: 4.2"
+                          tooltip="(Likes + Comentarios) ÷ Alcance × 100, promediado en los últimos posteos orgánicos." />
                       </div>
                       <div className="flex gap-2">
                         {orgEditing && (
@@ -1205,9 +1403,16 @@ export default function UGCDrawer({
                           style={{ backgroundColor: 'var(--color-brand)' }}
                         >
                           {orgSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                          Guardar evaluación
+                          {orgSaving ? 'Guardando...' : 'Guardar evaluación'}
                         </button>
                       </div>
+                      {orgSaveError && (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+                          style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.2)' }}>
+                          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />
+                          <p className="text-xs text-rose-600">{orgSaveError}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1249,6 +1454,8 @@ export default function UGCDrawer({
                         <MetricRow label="Frecuencia" value={ugc.evaluacionPauta.frecuencia} />
                         <MetricRow label="CTR" value={ugc.evaluacionPauta.ctr} unit="%" />
                         <MetricRow label="VTR" value={ugc.evaluacionPauta.vtr} unit="%" />
+                        <MetricRow label="Vistas (paid)" value={ugc.evaluacionPauta.vistas?.toLocaleString('es-AR')} />
+                        <MetricRow label="ER (paid)" value={ugc.evaluacionPauta.er} unit="%" />
                       </div>
                     </div>
                   ) : (
@@ -1266,6 +1473,10 @@ export default function UGCDrawer({
                           tooltip="Click-Through Rate: % de personas que hicieron clic sobre el total de impresiones." />
                         <FormField label="VTR" unit="%" value={pVTR} onChange={setPVTR} placeholder="ej: 65"
                           tooltip="View-Through Rate: % de personas que vieron el video completo sobre el total de impresiones." />
+                        <FormField label="Vistas (paid)" value={pVistas} onChange={setPVistas} placeholder="ej: 120000"
+                          tooltip="Reproducciones totales obtenidas con pauta en esta campaña." />
+                        <FormField label="ER (paid)" unit="%" value={pER} onChange={setPER} placeholder="ej: 2.1"
+                          tooltip="Engagement Rate del contenido pauteado: interacciones ÷ impresiones × 100." />
                       </div>
                       <div className="flex gap-2">
                         {pautaEditing && (
@@ -1284,9 +1495,16 @@ export default function UGCDrawer({
                           style={{ backgroundColor: 'var(--color-brand)' }}
                         >
                           {pautaSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                          Guardar evaluación
+                          {pautaSaving ? 'Guardando...' : 'Guardar evaluación'}
                         </button>
                       </div>
+                      {pautaSaveError && (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+                          style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.2)' }}>
+                          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-rose-500" />
+                          <p className="text-xs text-rose-600">{pautaSaveError}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

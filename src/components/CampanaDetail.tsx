@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import {
-  ArrowLeft, Rocket, Pause, Play, TrendingUp, TrendingDown,
+  ArrowLeft, Rocket, Pause, Play, TrendingUp, TrendingDown, Trash2,
   BarChart3, Users, Mail, CheckCircle, ChevronDown, ChevronUp, ChevronsUpDown, Award,
   MessageCircleMore, X, Send, Zap, MessageSquare, Loader2, RefreshCw
 } from 'lucide-react';
+import ConfirmDeleteModal from './ConfirmDeleteModal';
 import type { Campana, UGC, EstadoEnCampana } from '../data';
 import {
   scoreColor, ESTADO_EN_CAMPANA_CONFIG, ESTADO_CAMPANA_CONFIG,
@@ -18,6 +19,7 @@ interface Props {
   onBack: () => void;
   onTogglePause: (campana: Campana) => void;
   onLanzar: (campana: Campana) => void;
+  onDeleteCampana: (campana: Campana) => void;
 }
 
 type SortKey2 = 'nombre' | 'estado' | 'score' | 'fechaEnvio';
@@ -48,12 +50,13 @@ function KPICard({
   );
 }
 
-export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, onLanzar }: Props) {
+export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, onLanzar, onDeleteCampana }: Props) {
   const [filterEstado, setFilterEstado] = useState<EstadoEnCampana | ''>('');
   const [sortKey, setSortKey] = useState<SortKey2>('score');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [showLanzarModal, setShowLanzarModal] = useState(false);
   const [showEnvioModal, setShowEnvioModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<{ success: number; failed: number } | null>(null);
   const [overrideUGC, setOverrideUGC] = useState<UGC | null>(null);
@@ -125,6 +128,17 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            title="Eliminar campaña"
+            className="flex items-center gap-2 px-3 py-2 border rounded-xl text-sm font-semibold transition-all duration-200"
+            style={{ borderColor: '#fecdd3', backgroundColor: '#fff1f2', color: '#e11d48' }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#ffe4e6'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#fff1f2'}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Eliminar
+          </button>
           {campana.estado !== 'Cerrada' && campana.estado !== 'Borrador' && (
             <button
               onClick={() => onTogglePause(campana)}
@@ -358,6 +372,13 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
           onClose={() => setShowEnvioModal(false)}
         />
       )}
+
+      <ConfirmDeleteModal
+        open={showDeleteConfirm}
+        itemName={campana.nombre}
+        onConfirm={() => { onDeleteCampana(campana); setShowDeleteConfirm(false); }}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
 
       {/* Override Bot Modal */}
       {overrideUGC && (

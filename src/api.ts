@@ -63,8 +63,8 @@ export async function updateEvaluacionOrganica(
 export async function updateEvaluacionPauta(
   id: string,
   data: Omit<EvaluacionPauta, 'completado'>
-): Promise<void> {
-  await json(`/creators/${id}/evaluacion-pauta`, {
+): Promise<{ ok: boolean; total?: number; breakdown?: { criterio: string; puntos: number; maximo: number }[] }> {
+  return json(`/creators/${id}/evaluacion-pauta`, {
     method: 'PATCH',
     body: JSON.stringify({ ...data, completado: true }),
   });
@@ -74,6 +74,10 @@ export async function updateEvaluacionPauta(
 
 export async function fetchCampaigns(): Promise<Campana[]> {
   return json<Campana[]>('/campaigns');
+}
+
+export async function deleteCampaign(id: string): Promise<void> {
+  await json(`/campaigns/${id}`, { method: 'DELETE' });
 }
 
 export async function updateCampaignStatus(id: string, estado: string): Promise<void> {
@@ -133,7 +137,7 @@ export async function sendCampaignMessage(id: string): Promise<void> {
 
 export async function scrapeCreator(
   id: string
-): Promise<{ ok: boolean; evaluacionPerfil: EvaluacionPerfil | null; durationMs: number }> {
+): Promise<{ ok: boolean; evaluacionPerfil: EvaluacionPerfil | null; updatedScore?: number; durationMs: number }> {
   return json(`/creators/${id}/scrape`, { method: 'POST' });
 }
 
@@ -145,6 +149,6 @@ export async function scrapeCreatorsByCampaign(
 
 export async function scrapeTikTokCreator(
   id: string
-): Promise<{ ok: boolean; evaluacionPerfilTiktok: EvaluacionPerfilTiktok | null; durationMs: number }> {
+): Promise<{ ok: boolean; evaluacionPerfilTiktok: EvaluacionPerfilTiktok | null; updatedScore?: number; durationMs: number }> {
   return json(`/creators/${id}/scrape-tiktok`, { method: 'POST' });
 }

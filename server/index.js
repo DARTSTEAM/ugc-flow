@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import { BigQuery } from '@google-cloud/bigquery';
 import { scrapeCreatorProfiles, scrapeTikTokProfiles } from './kernel/index.js';
+import { recalcularScore } from './score-service.js';
 
 const app = express();
 app.use(cors());
@@ -12,8 +13,8 @@ app.use(express.json());
 const bq = new BigQuery({ projectId: 'hike-agentic-playground' });
 const DATASET = 'ngr_ugc';
 
-function q(sql, params) {
-  return bq.query({ query: sql, params, location: 'US' }).then(([rows]) => rows);
+function q(sql, params, types) {
+  return bq.query({ query: sql, params, types, location: 'US' }).then(([rows]) => rows);
 }
 
 // ─── STATUS MAP ─────────────────────────────────────────────────────
@@ -82,7 +83,7 @@ app.get('/api/creators/:id', async (req, res) => {
       q(`SELECT * FROM ${DATASET}.creators WHERE creator_id = @id`, { id }),
       q(`SELECT * FROM ${DATASET}.messages WHERE creator_id = @id ORDER BY orden`, { id }),
       q(`SELECT * FROM ${DATASET}.qualifications WHERE creator_id = @id ORDER BY orden`, { id }),
-      q(`SELECT * FROM ${DATASET}.creator_scores WHERE creator_id = @id`, { id }),
+      q(`SELECT * FROM ${DATASET}.creator_scores WHERE creator_id = @id ORDER BY orden`, { id }).catch(() => []),
     ]);
 
     if (!creators.length) return res.status(404).json({ error: 'Not found' });
@@ -96,6 +97,8 @@ app.get('/api/creators/:id', async (req, res) => {
       promedioVistaVideos: c.eval_perfil_promedio_vistas != null ? Number(c.eval_perfil_promedio_vistas) : null,
       categoria: c.eval_perfil_categoria ?? '',
       rangoEdadSeguidores: c.eval_perfil_rango_edad_seguidores ?? '',
+      frecuenciaSemanal: c.eval_perfil_frecuencia_semanal != null ? Number(c.eval_perfil_frecuencia_semanal) : null,
+      videosVirales: c.eval_perfil_videos_virales != null ? Number(c.eval_perfil_videos_virales) : null,
       lastScrapedAt: c.eval_perfil_last_scraped_at?.value ?? c.eval_perfil_last_scraped_at ?? '',
     } : undefined;
 
@@ -104,24 +107,28 @@ app.get('/api/creators/:id', async (req, res) => {
       seguidores: Number(c.tiktok_eval_seguidores),
       engagementRate: c.tiktok_eval_engagement_rate != null ? Number(c.tiktok_eval_engagement_rate) : null,
       promedioVistas: c.tiktok_eval_promedio_vistas != null ? Number(c.tiktok_eval_promedio_vistas) : null,
+      frecuenciaSemanal: c.tiktok_eval_frecuencia_semanal != null ? Number(c.tiktok_eval_frecuencia_semanal) : null,
+      videosVirales: c.tiktok_eval_videos_virales != null ? Number(c.tiktok_eval_videos_virales) : null,
       lastScrapedAt: c.tiktok_eval_last_scraped_at?.value ?? c.tiktok_eval_last_scraped_at ?? '',
     } : undefined;
 
     const evalOrganica = c.eval_organica_completado ? {
-      views: c.eval_organica_views ?? undefined,
-      shares: c.eval_organica_shares ?? undefined,
-      engagementRate: c.eval_organica_engagement_rate ?? undefined,
-      hookNatural: c.eval_organica_hook_natural ?? undefined,
+      views: c.eval_organica_views != null ? Number(c.eval_organica_views) : undefined,
+      shares: c.eval_organica_shares != null ? Number(c.eval_organica_shares) : undefined,
+      engagementRate: c.eval_organica_engagement_rate != null ? Number(c.eval_organica_engagement_rate) : undefined,
+      hookNatural: c.eval_organica_hook_natural != null ? Number(c.eval_organica_hook_natural) : undefined,
       completado: true,
     } : undefined;
 
     const evalPauta = c.eval_pauta_completado ? {
-      impresiones: c.eval_pauta_impresiones ?? undefined,
-      alcance: c.eval_pauta_alcance ?? undefined,
-      cpm: c.eval_pauta_cpm ?? undefined,
-      frecuencia: c.eval_pauta_frecuencia ?? undefined,
-      ctr: c.eval_pauta_ctr ?? undefined,
-      vtr: c.eval_pauta_vtr ?? undefined,
+      impresiones: c.eval_pauta_impresiones != null ? Number(c.eval_pauta_impresiones) : undefined,
+      alcance: c.eval_pauta_alcance != null ? Number(c.eval_pauta_alcance) : undefined,
+      cpm: c.eval_pauta_cpm != null ? Number(c.eval_pauta_cpm) : undefined,
+      frecuencia: c.eval_pauta_frecuencia != null ? Number(c.eval_pauta_frecuencia) : undefined,
+      ctr: c.eval_pauta_ctr != null ? Number(c.eval_pauta_ctr) : undefined,
+      vtr: c.eval_pauta_vtr != null ? Number(c.eval_pauta_vtr) : undefined,
+      vistas: c.eval_pauta_vistas != null ? Number(c.eval_pauta_vistas) : undefined,
+      er: c.eval_pauta_er != null ? Number(c.eval_pauta_er) : undefined,
       completado: true,
     } : undefined;
 
@@ -338,13 +345,12 @@ app.post('/api/campaigns/:id/send-message', (_req, res) => {
 app.patch('/api/creators/:id/evaluacion-organica', async (req, res) => {
   try {
     const { id } = req.params;
-    const { views, shares, engagementRate, hookNatural, completado } = req.body;
+    const { views, shares, engagementRate, completado } = req.body;
     await q(`
       UPDATE ${DATASET}.creators SET
         eval_organica_views           = @views,
         eval_organica_shares          = @shares,
         eval_organica_engagement_rate = @engagementRate,
-        eval_organica_hook_natural    = @hookNatural,
         eval_organica_completado      = @completado,
         updated_at                    = CURRENT_TIMESTAMP()
       WHERE creator_id = @id
@@ -353,8 +359,12 @@ app.patch('/api/creators/:id/evaluacion-organica', async (req, res) => {
       views: views ?? null,
       shares: shares ?? null,
       engagementRate: engagementRate ?? null,
-      hookNatural: hookNatural ?? null,
       completado: completado ?? false,
+    }, {
+      views: 'FLOAT64',
+      shares: 'FLOAT64',
+      engagementRate: 'FLOAT64',
+      completado: 'BOOL',
     });
     res.json({ ok: true });
   } catch (err) {
@@ -367,7 +377,7 @@ app.patch('/api/creators/:id/evaluacion-organica', async (req, res) => {
 app.patch('/api/creators/:id/evaluacion-pauta', async (req, res) => {
   try {
     const { id } = req.params;
-    const { impresiones, alcance, cpm, frecuencia, ctr, vtr, completado } = req.body;
+    const { impresiones, alcance, cpm, frecuencia, ctr, vtr, vistas, er, completado } = req.body;
     await q(`
       UPDATE ${DATASET}.creators SET
         eval_pauta_impresiones = @impresiones,
@@ -376,6 +386,8 @@ app.patch('/api/creators/:id/evaluacion-pauta', async (req, res) => {
         eval_pauta_frecuencia  = @frecuencia,
         eval_pauta_ctr         = @ctr,
         eval_pauta_vtr         = @vtr,
+        eval_pauta_vistas      = @vistas,
+        eval_pauta_er          = @er,
         eval_pauta_completado  = @completado,
         updated_at             = CURRENT_TIMESTAMP()
       WHERE creator_id = @id
@@ -387,9 +399,23 @@ app.patch('/api/creators/:id/evaluacion-pauta', async (req, res) => {
       frecuencia: frecuencia ?? null,
       ctr: ctr ?? null,
       vtr: vtr ?? null,
+      vistas: vistas ?? null,
+      er: er ?? null,
       completado: completado ?? false,
+    }, {
+      impresiones: 'INT64',
+      alcance: 'INT64',
+      cpm: 'FLOAT64',
+      frecuencia: 'FLOAT64',
+      ctr: 'FLOAT64',
+      vtr: 'FLOAT64',
+      vistas: 'INT64',
+      er: 'FLOAT64',
+      completado: 'BOOL',
     });
-    res.json({ ok: true });
+
+    const scoreResult = await recalcularScore(id).catch(() => null);
+    res.json({ ok: true, ...(scoreResult ?? {}) });
   } catch (err) {
     console.error('PATCH /api/creators/:id/evaluacion-pauta error:', err);
     res.status(500).json({ error: err.message });
@@ -412,7 +438,9 @@ app.post('/api/creators/:id/scrape', async (req, res) => {
       query: `
         SELECT eval_perfil_nombre, eval_perfil_handle, eval_perfil_seguidores,
                eval_perfil_engagement_rate_cuenta, eval_perfil_promedio_vistas,
-               eval_perfil_categoria, eval_perfil_rango_edad_seguidores, eval_perfil_last_scraped_at
+               eval_perfil_categoria, eval_perfil_rango_edad_seguidores,
+               eval_perfil_frecuencia_semanal, eval_perfil_videos_virales,
+               eval_perfil_last_scraped_at
         FROM ${DATASET}.creators WHERE creator_id = @id
       `,
       params: { id },
@@ -428,10 +456,19 @@ app.post('/api/creators/:id/scrape', async (req, res) => {
       promedioVistaVideos: c.eval_perfil_promedio_vistas != null ? Number(c.eval_perfil_promedio_vistas) : null,
       categoria: c.eval_perfil_categoria ?? '',
       rangoEdadSeguidores: c.eval_perfil_rango_edad_seguidores ?? '',
+      frecuenciaSemanal: c.eval_perfil_frecuencia_semanal != null ? Number(c.eval_perfil_frecuencia_semanal) : null,
+      videosVirales: c.eval_perfil_videos_virales != null ? Number(c.eval_perfil_videos_virales) : null,
       lastScrapedAt: c.eval_perfil_last_scraped_at?.value ?? c.eval_perfil_last_scraped_at ?? '',
     } : null;
 
-    res.json({ ok: true, evaluacionPerfil, durationMs: result.durationMs });
+    // Score already recalculated by kernel/index.js — fetch updated value
+    const [scoreRows] = await bq.query({
+      query: `SELECT score FROM ${DATASET}.creators WHERE creator_id = @id`,
+      params: { id }, location: 'US',
+    });
+    const updatedScore = scoreRows[0]?.score != null ? Number(scoreRows[0].score) : undefined;
+
+    res.json({ ok: true, evaluacionPerfil, updatedScore, durationMs: result.durationMs });
   } catch (err) {
     console.error('POST /api/creators/:id/scrape error:', err);
     res.status(500).json({ ok: false, error: err.message });
@@ -457,7 +494,8 @@ app.post('/api/creators/:id/scrape-tiktok', async (req, res) => {
     const [rows] = await bq.query({
       query: `
         SELECT tiktok_eval_seguidores, tiktok_eval_engagement_rate,
-               tiktok_eval_promedio_vistas, tiktok_eval_last_scraped_at, username_tiktok
+               tiktok_eval_promedio_vistas, tiktok_eval_frecuencia_semanal,
+               tiktok_eval_videos_virales, tiktok_eval_last_scraped_at, username_tiktok
         FROM ${DATASET}.creators WHERE creator_id = @id
       `,
       params: { id },
@@ -470,10 +508,19 @@ app.post('/api/creators/:id/scrape-tiktok', async (req, res) => {
       seguidores: Number(c.tiktok_eval_seguidores),
       engagementRate: c.tiktok_eval_engagement_rate != null ? Number(c.tiktok_eval_engagement_rate) : null,
       promedioVistas: c.tiktok_eval_promedio_vistas != null ? Number(c.tiktok_eval_promedio_vistas) : null,
+      frecuenciaSemanal: c.tiktok_eval_frecuencia_semanal != null ? Number(c.tiktok_eval_frecuencia_semanal) : null,
+      videosVirales: c.tiktok_eval_videos_virales != null ? Number(c.tiktok_eval_videos_virales) : null,
       lastScrapedAt: c.tiktok_eval_last_scraped_at?.value ?? c.tiktok_eval_last_scraped_at ?? '',
     } : null;
 
-    res.json({ ok: true, evaluacionPerfilTiktok, durationMs: result.durationMs });
+    // Score already recalculated by kernel/index.js — fetch updated value
+    const [scoreRows] = await bq.query({
+      query: `SELECT score FROM ${DATASET}.creators WHERE creator_id = @id`,
+      params: { id }, location: 'US',
+    });
+    const updatedScore = scoreRows[0]?.score != null ? Number(scoreRows[0].score) : undefined;
+
+    res.json({ ok: true, evaluacionPerfilTiktok, updatedScore, durationMs: result.durationMs });
   } catch (err) {
     console.error('POST /api/creators/:id/scrape-tiktok error:', err);
     res.status(500).json({ ok: false, error: err.message });

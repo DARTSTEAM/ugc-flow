@@ -35,6 +35,18 @@ ALTER TABLE ngr_ugc.creators ADD COLUMN IF NOT EXISTS eval_pauta_ctr            
 ALTER TABLE ngr_ugc.creators ADD COLUMN IF NOT EXISTS eval_pauta_vtr               FLOAT64;   -- % view-through rate
 ALTER TABLE ngr_ugc.creators ADD COLUMN IF NOT EXISTS eval_pauta_completado        BOOL;
 
+-- Posting frequency and viral videos (populated by Kernel scraper)
+ALTER TABLE ngr_ugc.creators ADD COLUMN IF NOT EXISTS eval_perfil_frecuencia_semanal  FLOAT64;  -- avg posts per week (last 60 days)
+ALTER TABLE ngr_ugc.creators ADD COLUMN IF NOT EXISTS eval_perfil_videos_virales       INT64;    -- count of reels > 3x avg views (last 60 days)
+
+-- TikTok — posting frequency and viral videos (populated by Kernel scraper)
+ALTER TABLE ngr_ugc.creators ADD COLUMN IF NOT EXISTS tiktok_eval_frecuencia_semanal  FLOAT64;
+ALTER TABLE ngr_ugc.creators ADD COLUMN IF NOT EXISTS tiktok_eval_videos_virales       INT64;
+
+-- Pauta KPIs — new fields for score (manual form)
+ALTER TABLE ngr_ugc.creators ADD COLUMN IF NOT EXISTS eval_pauta_vistas               INT64;    -- views from paid campaign
+ALTER TABLE ngr_ugc.creators ADD COLUMN IF NOT EXISTS eval_pauta_er                   FLOAT64;  -- engagement rate from paid campaign
+
 -- ── campaigns table ─────────────────────────────────────────
 
 ALTER TABLE ngr_ugc.campaigns ADD COLUMN IF NOT EXISTS mensaje_contacto STRING;   -- WhatsApp outreach message template

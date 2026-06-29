@@ -316,7 +316,10 @@ export async function scrapeInstagramProfile(handle) {
     const reelsForAvgViews = capturedReelsFeed.slice(0, 5);
     const promedioVistaVideos = calcAvgViews(reelsForAvgViews);
 
-    console.log(`[Kernel] ${handle} — ER: ${engagementRateCuenta} | avgViews: ${promedioVistaVideos} (from ${reelsForAvgViews.length} reels) | seguidores: ${capturedUser.seguidores}`);
+    const frecuenciaSemanal = calcFrecuenciaSemanal(allNonPinned);
+    const videosVirales     = calcVideosVirales(capturedReelsFeed);
+
+    console.log(`[Kernel] ${handle} — ER: ${engagementRateCuenta} | avgViews: ${promedioVistaVideos} (from ${reelsForAvgViews.length} reels) | freq: ${frecuenciaSemanal}/wk | viral: ${videosVirales} | seguidores: ${capturedUser.seguidores}`);
 
     return {
       handle,
@@ -326,6 +329,8 @@ export async function scrapeInstagramProfile(handle) {
       promedioVistaVideos,
       categoria:            capturedUser.categoria,
       rangoEdadSeguidores:  null,
+      frecuenciaSemanal,
+      videosVirales,
     };
 
   } catch (err) {
@@ -470,6 +475,63 @@ function calcEngagementRate(posts, seguidores) {
   }, 0);
 
   return parseFloat(((totalInteractions / posts.length / seguidores) * 100).toFixed(2));
+}
+
+/**
+ * Average posts per week based on non-pinned posts within the last 60 days.
+ * Uses taken_at (Unix seconds) or taken_at_timestamp field.
+ * Returns null if no timestamped posts are found.
+ */
+function calcFrecuenciaSemanal(posts) {
+  const now = Math.floor(Date.now() / 1000);
+  const sixtyDaysAgo = now - 60 * 24 * 3600;
+
+  const timestamps = posts
+    .map(p => p.taken_at ?? p.taken_at_timestamp ?? p.device_timestamp)
+    .filter(ts => typeof ts === 'number' && ts > sixtyDaysAgo);
+
+  if (!timestamps.length) return null;
+
+  const WEEKS = 60 / 7;
+  return parseFloat((timestamps.length / WEEKS).toFixed(2));
+}
+
+/**
+ * Count of reels in the last 60 days whose view count exceeds 3× the average
+ * views of the remaining reels in that window (viral = outlier by 3x).
+ * Requires at least 2 reels to compute a meaningful comparison.
+ */
+function calcVideosVirales(reelsFeed) {
+  const now = Math.floor(Date.now() / 1000);
+  const sixtyDaysAgo = now - 60 * 24 * 3600;
+
+  const withTs  = reelsFeed.filter(r => typeof (r.taken_at ?? r.taken_at_timestamp) === 'number');
+  const inRange = withTs.filter(r => (r.taken_at ?? r.taken_at_timestamp) > sixtyDaysAgo);
+  console.log(`[Kernel] calcVideosVirales: ${reelsFeed.length} reels total | ${withTs.length} with timestamp | ${inRange.length} within 60 days`);
+
+  // Use dated reels when available; fall back to all reels with view data to
+  // avoid always returning 0 when the clips API omits taken_at.
+  const pool = inRange.length >= 2 ? inRange : reelsFeed;
+
+  const recent = pool
+    .map(r => {
+      const views =
+        r.video_view_count ??
+        r.play_count ??
+        r.view_count ??
+        r.clips_metadata?.ig_play_count ??
+        null;
+      return views != null ? Number(views) : null;
+    })
+    .filter(v => v != null);
+
+  if (recent.length < 2) return 0;
+
+  const total = recent.reduce((s, v) => s + v, 0);
+  return recent.filter(v => {
+    const othersAvg = (total - v) / (recent.length - 1);
+    return v > 3 * othersAvg;
+  }).length;
 }
 
 /**

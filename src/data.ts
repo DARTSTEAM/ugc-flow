@@ -34,6 +34,8 @@ export interface EvaluacionPerfil {
   promedioVistaVideos: number | null;     // null si no hay videos en los últimos 5 posts
   categoria: string | null;              // null para cuentas personales
   rangoEdadSeguidores: string | null;    // siempre null — no disponible públicamente
+  frecuenciaSemanal: number | null;       // promedio de posts por semana (últimos 60 días)
+  videosVirales: number | null;           // videos con vistas > 3x promedio resto (últimos 60 días)
   lastScrapedAt: string;                 // ISO timestamp
 }
 
@@ -43,15 +45,16 @@ export interface EvaluacionPerfilTiktok {
   seguidores: number;
   engagementRate: number | null;          // null si no hay videos suficientes
   promedioVistas: number | null;          // null si no hay play counts
+  frecuenciaSemanal: number | null;       // promedio de videos por semana (últimos 60 días)
+  videosVirales: number | null;           // videos con vistas > 3x promedio resto (últimos 60 días)
   lastScrapedAt: string;
 }
 
-/** Form manual — contenido orgánico. Cada campo pondera 25% del score orgánico */
+/** Form manual — contenido orgánico de campaña (datos de referencia, no inciden directamente en el score) */
 export interface EvaluacionOrganica {
-  views?: number;           // promedio de vistas (25%)
-  shares?: number;          // promedio de shares (25%)
-  engagementRate?: number;  // ER % (25%)
-  hookNatural?: number;     // puntuación 1–10 de hook natural (25%)
+  views?: number;           // promedio de vistas orgánicas
+  shares?: number;          // promedio de shares orgánicos
+  engagementRate?: number;  // ER % orgánico
   completado: boolean;
 }
 
@@ -59,10 +62,12 @@ export interface EvaluacionOrganica {
 export interface EvaluacionPauta {
   impresiones?: number;
   alcance?: number;
-  cpm?: number;             // costo por 1000 impresiones
+  cpm?: number;             // costo por 1000 impresiones (15% score)
   frecuencia?: number;      // frecuencia de exposición
-  ctr?: number;             // % click-through rate
-  vtr?: number;             // % view-through rate
+  ctr?: number;             // % click-through rate (25% orgánico en score)
+  vtr?: number;             // % view-through rate (25% orgánico en score)
+  vistas?: number;          // reproducciones de pauta (15% score)
+  er?: number;              // engagement rate de pauta % (15% score)
   completado: boolean;
 }
 

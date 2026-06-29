@@ -5,6 +5,7 @@ import {
   Filter, UserPlus, Instagram, Mail, MessageSquare, AlertTriangle
 } from 'lucide-react';
 import type { UGC, EstadoUGC, Canal, Campana } from '../data';
+import ConfirmDeleteModal from './ConfirmDeleteModal';
 import {
   scoreColor, ESTADO_UGC_CONFIG,
   getInitials, avatarColor, needsInfoUpdate
@@ -553,12 +554,7 @@ function NuevoCreadorModal({ onCrear, onClose }: NuevoCreadorModalProps) {
       calificacion: [],
       seguidores: seguidores.trim() || undefined,
       bio: bio.trim() || undefined,
-      scoreBreakdown: [
-        { criterio: 'Velocidad de respuesta', puntos: 0, maximo: 25 },
-        { criterio: 'Interés declarado',      puntos: 0, maximo: 25 },
-        { criterio: 'Calidad de respuesta',   puntos: 0, maximo: 25 },
-        { criterio: 'Perfil del canal',        puntos: 0, maximo: 25 },
-      ],
+      scoreBreakdown: [],
     };
     onCrear(newUGC);
     onClose();
@@ -700,6 +696,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
   const [selectedUGC, setSelectedUGC] = useState<UGC | null>(null);
   const [showFiltrosModal, setShowFiltrosModal] = useState(false);
   const [showNuevoCreadorModal, setShowNuevoCreadorModal] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const hasActiveFilters = filterEstado !== '' || scoreMin > 0 || scoreMax < 100 || filterEtiquetas.length > 0;
 
@@ -974,7 +971,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
                           <MessageCircle className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => onDeleteUGC(u.id)}
+                          onClick={() => setPendingDeleteId(u.id)}
                           title="Eliminar creador"
                           className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150"
                           style={{ color: 'var(--color-text-3)' }}
@@ -1045,6 +1042,13 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
           onGoToChat={ugc => { setSelectedUGC(null); onGoToChat?.(ugc); }}
         />
       )}
+
+      <ConfirmDeleteModal
+        open={pendingDeleteId !== null}
+        itemName={ugcs.find(u => u.id === pendingDeleteId)?.nombre ?? ''}
+        onConfirm={() => { if (pendingDeleteId) { onDeleteUGC(pendingDeleteId); } setPendingDeleteId(null); }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }

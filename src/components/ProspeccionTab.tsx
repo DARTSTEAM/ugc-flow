@@ -118,11 +118,16 @@ function fmtNum(n: number): string {
 
 // ── Component ───────────────────────────────────────────────────────────────
 export default function ProspeccionTab() {
-  const [busquedas] = useState<Busqueda[]>(BUSQUEDAS_MOCK);
+  const [busquedas, setBusquedas] = useState<Busqueda[]>(BUSQUEDAS_MOCK);
   const [selected, setSelected] = useState<Busqueda | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [filter, setFilter] = useState<FilterOpt>('Todas');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  function handleDeleteBusqueda(id: string) {
+    setBusquedas(prev => prev.filter(b => b.id !== id));
+    setSelected(null);
+  }
 
   const completadas  = busquedas.filter(b => b.estado === 'Completada').length;
   const enProgreso   = busquedas.filter(b => b.estado === 'En progreso').length;
@@ -352,7 +357,11 @@ export default function ProspeccionTab() {
 
       {/* ── Drawer ────────────────────────────────────────────── */}
       {selected && (
-        <BusquedaDrawer busqueda={selected} onClose={() => setSelected(null)} />
+        <BusquedaDrawer
+          busqueda={selected}
+          onClose={() => setSelected(null)}
+          onDelete={() => handleDeleteBusqueda(selected.id)}
+        />
       )}
 
       {/* ── Modal ─────────────────────────────────────────────── */}

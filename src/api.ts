@@ -1,4 +1,4 @@
-import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok } from './data';
+import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana } from './data';
 
 const BASE = '/api';
 
@@ -151,4 +151,33 @@ export async function scrapeTikTokCreator(
   id: string
 ): Promise<{ ok: boolean; evaluacionPerfilTiktok: EvaluacionPerfilTiktok | null; updatedScore?: number; durationMs: number }> {
   return json(`/creators/${id}/scrape-tiktok`, { method: 'POST' });
+}
+
+// ─── Campaign content (posteos de campaña) ──────────────────────────
+
+export async function fetchCampaignContent(campaignId: string): Promise<CampaignContentResponse> {
+  return json<CampaignContentResponse>(`/campaigns/${campaignId}/content`);
+}
+
+export async function addCampaignContent(
+  campaignId: string, creatorId: string, url: string
+): Promise<{ ok: boolean; duplicated?: boolean; content: ContenidoCampana }> {
+  return json(`/campaigns/${campaignId}/content`, {
+    method: 'POST',
+    body: JSON.stringify({ creatorId, url }),
+  });
+}
+
+export async function deleteCampaignContent(campaignId: string, contentId: string): Promise<void> {
+  await json(`/campaigns/${campaignId}/content/${contentId}`, { method: 'DELETE' });
+}
+
+export async function scrapeCampaignContent(
+  campaignId: string
+): Promise<{ ok: boolean; success: string[]; failed: Array<{ id: string; reason: string }>; content: ContenidoCampana[]; metricas: MetricasCampana | null; durationMs: number }> {
+  return json(`/campaigns/${campaignId}/scrape-content`, { method: 'POST' });
+}
+
+export async function fetchCreatorContent(creatorId: string): Promise<ContenidoCampana[]> {
+  return json<ContenidoCampana[]>(`/creators/${creatorId}/content`);
 }

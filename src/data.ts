@@ -95,6 +95,68 @@ export interface UGC {
   evaluacionPauta?: EvaluacionPauta;               // form manual — KPIs de pauta
 }
 
+// ─── Campaign content & metrics (públicas / orgánicas) ───────────────────────
+
+/** Una pieza de contenido publicada por un creador PARA una campaña. */
+export interface ContenidoCampana {
+  id: string;
+  campaignId: string;
+  creatorId: string;
+  creatorNombre?: string;
+  platform: 'instagram' | 'tiktok' | 'desconocida';
+  url: string;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saves: number | null;
+  engagementRate: number | null;
+  lastScrapedAt: string | null;
+  scrapeError?: string | null;
+}
+
+/** Métricas agregadas a nivel campaña (suma de los posteos confirmados). */
+export interface MetricasCampana {
+  totalPosteos: number;
+  totalCreadoresConPosteos: number;
+  vistas: number;
+  likes: number;
+  comentarios: number;
+  compartidos: number;
+  guardados: number;
+  interacciones: number;
+  engagementRate: number | null;
+  topCreadores: Array<{
+    creatorId: string;
+    nombre: string;
+    categoria: string | null;
+    posteos: number;
+    vistas: number;
+    interacciones: number;
+    engagementRate: number | null;
+  }>;
+  topContenidos: Array<{
+    id: string;
+    creatorId: string;
+    creatorNombre: string;
+    platform: string;
+    url: string;
+    views: number | null;
+    likes: number | null;
+    comments: number | null;
+    shares: number | null;
+    saves: number | null;
+    engagementRate: number | null;
+    interacciones: number;
+  }>;
+}
+
+export interface CampaignContentResponse {
+  content: ContenidoCampana[];
+  metricas: MetricasCampana | null;
+  creadoresSinPosteos: Array<{ id: string; nombre: string }>;
+}
+
 export interface UGCEnCampana {
   ugcId: string;
   estado: EstadoEnCampana;

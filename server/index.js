@@ -3,8 +3,10 @@ import { pathToFileURL } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import { BigQuery } from '@google-cloud/bigquery';
-import { scrapeCreatorProfiles, scrapeTikTokProfiles } from './kernel/index.js';
+import { scrapeCreatorProfiles, scrapeTikTokProfiles, scrapeCampaignContent } from './kernel/index.js';
+import { detectPlatform } from './kernel/scrapers/content-post.js';
 import { recalcularScore } from './score-service.js';
+import { computeCampaignMetrics } from './metrics-service.js';
 
 const app = express();
 app.use(cors());
@@ -15,6 +17,14 @@ const DATASET = 'ngr_ugc';
 
 function q(sql, params, types) {
   return bq.query({ query: sql, params, types, location: 'US' }).then(([rows]) => rows);
+}
+
+/** content_id determinístico = hash(campaign_id|url) → re-cargar la misma URL es idempotente. */
+function contentIdFor(campaignId, url) {
+  const str = `${campaignId}|${(url || '').trim()}`;
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return `cnt_${(h >>> 0).toString(36)}`;
 }
 
 // ─── STATUS MAP ─────────────────────────────────────────────────────
@@ -622,6 +632,157 @@ app.post('/api/campaigns/:id/scrape-creators', async (req, res) => {
   } catch (err) {
     console.error('POST /api/campaigns/:id/scrape-creators error:', err);
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── Campaign content (posteos de campaña) ──────────────────────────
+// Mapea una fila de BQ al shape ContenidoCampana del frontend.
+function mapContentRow(r) {
+  return {
+    id: r.content_id,
+    campaignId: r.campaign_id,
+    creatorId: r.creator_id,
+    creatorNombre: r.creator_nombre || r.creator_id,
+    platform: r.platform || 'desconocida',
+    url: r.content_url,
+    views: r.org_views != null ? Number(r.org_views) : null,
+    likes: r.org_likes != null ? Number(r.org_likes) : null,
+    comments: r.org_comments != null ? Number(r.org_comments) : null,
+    shares: r.org_shares != null ? Number(r.org_shares) : null,
+    saves: r.org_saves != null ? Number(r.org_saves) : null,
+    engagementRate: r.org_engagement_rate != null ? Number(r.org_engagement_rate) : null,
+    lastScrapedAt: r.org_last_scraped_at?.value ?? r.org_last_scraped_at ?? null,
+    scrapeError: r.scrape_error || null,
+  };
+}
+
+// ─── GET /api/campaigns/:id/content ─────────────────────────────────
+// Devuelve { content, metricas, creadoresSinPosteos }.
+app.get('/api/campaigns/:id/content', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [contentRows, assigned] = await Promise.all([
+      q(`
+        SELECT cc.*, c.full_name AS creator_nombre, c.eval_perfil_categoria AS creator_categoria
+        FROM ${DATASET}.campaign_content cc
+        LEFT JOIN ${DATASET}.creators c ON cc.creator_id = c.creator_id
+        WHERE cc.campaign_id = @id
+        ORDER BY cc.created_at
+      `, { id }),
+      q(`
+        SELECT cc.creator_id, c.full_name AS nombre
+        FROM ${DATASET}.campaign_creators cc
+        LEFT JOIN ${DATASET}.creators c ON cc.creator_id = c.creator_id
+        WHERE cc.campaign_id = @id
+      `, { id }),
+    ]);
+
+    const content = contentRows.map(mapContentRow);
+    const metricas = computeCampaignMetrics(contentRows);
+
+    // Creadores asignados a la campaña que aún no tienen NINGÚN posteo cargado
+    const conPosteos = new Set(contentRows.map(r => r.creator_id));
+    const seen = new Set();
+    const creadoresSinPosteos = assigned
+      .filter(a => !conPosteos.has(a.creator_id))
+      .filter(a => (seen.has(a.creator_id) ? false : (seen.add(a.creator_id), true)))
+      .map(a => ({ id: a.creator_id, nombre: a.nombre || a.creator_id }));
+
+    res.json({ content, metricas, creadoresSinPosteos });
+  } catch (err) {
+    console.error('GET /api/campaigns/:id/content error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/campaigns/:id/content ────────────────────────────────
+// Body: { creatorId, url }. Inserta una pieza (idempotente por URL).
+app.post('/api/campaigns/:id/content', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { creatorId, url } = req.body;
+    if (!creatorId || !url) return res.status(400).json({ error: 'creatorId and url required' });
+
+    const contentId = contentIdFor(id, url);
+    const platform = detectPlatform(url) || 'desconocida';
+
+    const existing = await q(`SELECT 1 FROM ${DATASET}.campaign_content WHERE content_id = @contentId LIMIT 1`, { contentId });
+    if (existing.length) {
+      return res.json({ ok: true, duplicated: true, content: { id: contentId } });
+    }
+
+    await q(`
+      INSERT INTO ${DATASET}.campaign_content
+        (content_id, campaign_id, creator_id, platform, content_url, created_at, updated_at)
+      VALUES (@contentId, @id, @creatorId, @platform, @url, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())
+    `, { contentId, id, creatorId, platform, url });
+
+    res.json({
+      ok: true,
+      content: {
+        id: contentId, campaignId: id, creatorId, platform, url,
+        views: null, likes: null, comments: null, shares: null, saves: null,
+        engagementRate: null, lastScrapedAt: null, scrapeError: null,
+      },
+    });
+  } catch (err) {
+    console.error('POST /api/campaigns/:id/content error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── DELETE /api/campaigns/:id/content/:contentId ───────────────────
+app.delete('/api/campaigns/:id/content/:contentId', async (req, res) => {
+  try {
+    const { id, contentId } = req.params;
+    await q(`DELETE FROM ${DATASET}.campaign_content WHERE campaign_id = @id AND content_id = @contentId`, { id, contentId });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /api/campaigns/:id/content/:contentId error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/campaigns/:id/scrape-content ─────────────────────────
+// Dispara Kernel sobre todas las piezas cargadas y devuelve content + métricas frescas.
+app.post('/api/campaigns/:id/scrape-content', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await scrapeCampaignContent(id);
+
+    const contentRows = await q(`
+      SELECT cc.*, c.full_name AS creator_nombre, c.eval_perfil_categoria AS creator_categoria
+      FROM ${DATASET}.campaign_content cc
+      LEFT JOIN ${DATASET}.creators c ON cc.creator_id = c.creator_id
+      WHERE cc.campaign_id = @id
+      ORDER BY cc.created_at
+    `, { id });
+
+    res.json({
+      ok: true,
+      ...result,
+      content: contentRows.map(mapContentRow),
+      metricas: computeCampaignMetrics(contentRows),
+    });
+  } catch (err) {
+    console.error('POST /api/campaigns/:id/scrape-content error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── GET /api/creators/:id/content ──────────────────────────────────
+// Posteos de un creador en todas sus campañas (para el drawer del UGC).
+app.get('/api/creators/:id/content', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rows = await q(`
+      SELECT * FROM ${DATASET}.campaign_content WHERE creator_id = @id ORDER BY created_at
+    `, { id });
+    res.json(rows.map(mapContentRow));
+  } catch (err) {
+    console.error('GET /api/creators/:id/content error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

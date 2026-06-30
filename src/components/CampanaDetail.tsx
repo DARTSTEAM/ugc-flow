@@ -1,17 +1,30 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Rocket, Pause, Play, TrendingUp, TrendingDown, Trash2,
-  BarChart3, Users, Mail, CheckCircle, ChevronDown, ChevronUp, ChevronsUpDown, Award,
-  MessageCircleMore, X, Send, Zap, MessageSquare, Loader2, RefreshCw
+  ArrowLeft, Rocket, Pause, Play, TrendingUp, Trash2,
+  ChevronDown, ChevronUp, ChevronsUpDown, Award,
+  MessageCircleMore, X, Send, Zap, MessageSquare, Loader2, RefreshCw,
+  Eye, Heart, MessageCircle, Share2, Bookmark, Link2, ExternalLink, AlertTriangle, Activity, HelpCircle, Sparkles
 } from 'lucide-react';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
-import type { Campana, UGC, EstadoEnCampana } from '../data';
+import type { Campana, UGC, EstadoEnCampana, ContenidoCampana, MetricasCampana } from '../data';
 import {
   scoreColor, ESTADO_EN_CAMPANA_CONFIG, ESTADO_CAMPANA_CONFIG,
   getInitials, avatarColor
 } from '../utils';
 import ConfirmarEnvioModal from './ConfirmarEnvioModal';
-import { scrapeCreatorsByCampaign } from '../api';
+import {
+  scrapeCreatorsByCampaign, fetchCampaignContent, addCampaignContent,
+  deleteCampaignContent, scrapeCampaignContent
+} from '../api';
+
+/** Formato compacto de números: 12.3K, 1.2M */
+function fmt(n: number | null | undefined): string {
+  if (n == null) return '—';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return n.toLocaleString('es-AR');
+}
 
 interface Props {
   campana: Campana;
@@ -27,25 +40,63 @@ type SortDir = 'asc' | 'desc';
 
 const ESTADOS_EN: EstadoEnCampana[] = ['Enviado', 'Respondió', 'Pendiente', 'Calificado', 'No aplica'];
 
-function KPICard({
-  icon, label, value, note, trend
-}: { icon: React.ReactNode; label: string; value: number | string; note?: string; trend?: 'up' | 'down' }) {
+/** Tooltip por portal (mismo patrón que UGCDrawer.MetricRow). */
+function Tip({ text, children }: { text: string; children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const ref = useRef<HTMLSpanElement>(null);
+  const show = () => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    setPos({ top: r.top - 6, left: r.left + r.width / 2 });
+    setVisible(true);
+  };
   return (
-    <div
-      className="flex-1 min-w-[130px] p-4 border rounded-xl"
-      style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}
-    >
-      <div className="flex items-start justify-between mb-2">
+    <>
+      <span ref={ref} onMouseEnter={show} onMouseLeave={() => setVisible(false)} className="inline-flex items-center">
+        {children}
+      </span>
+      {visible && createPortal(
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, transform: 'translate(-50%, -100%)',
+          zIndex: 9999, width: '14rem', padding: '7px 10px', borderRadius: '8px',
+          fontSize: '10px', lineHeight: '1.55', pointerEvents: 'none',
+          backgroundColor: 'var(--color-surface)', color: 'var(--color-text-2)',
+          border: '1px solid var(--color-border)', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+        }}>
+          {text}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+const NOT_ANALYZED_MSG = 'Todavía no se analizaron los posteos. Si querés analizarlos, presioná "Analizar ahora".';
+
+/**
+ * Tarjeta de métrica clave de campaña. Si value es null (todavía no se analizó),
+ * muestra un "—" gris bold con tooltip. Cada métrica tiene un "?" que explica su cálculo.
+ */
+function MetricCard({ icon, label, value, help }: {
+  icon: React.ReactNode; label: string; value: string | null; help: string;
+}) {
+  return (
+    <div className="flex-1 min-w-[120px] p-3 border rounded-xl" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+      <div className="flex items-center justify-between mb-1.5">
         <span style={{ color: 'var(--color-text-3)' }}>{icon}</span>
-        {trend && (
-          <span className={trend === 'up' ? 'text-emerald-500' : 'text-rose-400'}>
-            {trend === 'up' ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-          </span>
-        )}
+        <Tip text={help}>
+          <HelpCircle className="w-3 h-3 cursor-help" style={{ color: 'var(--color-text-3)' }} />
+        </Tip>
       </div>
-      <p className="text-2xl font-black font-mono" style={{ color: 'var(--color-text-1)' }}>{value}</p>
+      {value != null ? (
+        <p className="text-xl font-black font-mono" style={{ color: 'var(--color-text-1)' }}>{value}</p>
+      ) : (
+        <Tip text={NOT_ANALYZED_MSG}>
+          <span className="text-xl font-black font-mono cursor-help" style={{ color: 'var(--color-text-3)' }}>—</span>
+        </Tip>
+      )}
       <p className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'var(--color-text-3)' }}>{label}</p>
-      {note && <p className="text-[10px] font-mono mt-0.5" style={{ color: 'var(--color-text-3)' }}>{note}</p>}
     </div>
   );
 }
@@ -57,11 +108,74 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   const [showLanzarModal, setShowLanzarModal] = useState(false);
   const [showEnvioModal, setShowEnvioModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<{ success: number; failed: number } | null>(null);
   const [overrideUGC, setOverrideUGC] = useState<UGC | null>(null);
   const [overrideMsg, setOverrideMsg] = useState('');
   const [overrideSent, setOverrideSent] = useState(false);
+
+  // ── Contenido de campaña + métricas ──
+  const [content, setContent] = useState<ContenidoCampana[]>([]);
+  const [metricas, setMetricas] = useState<MetricasCampana | null>(null);
+  const [creadoresSinPosteos, setCreadoresSinPosteos] = useState<{ id: string; nombre: string }[]>([]);
+  const [contentLoading, setContentLoading] = useState(true);
+  const [scrapingContent, setScrapingContent] = useState(false);
+  const [urlInputs, setUrlInputs] = useState<Record<string, string>>({});
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+
+  const loadContent = useCallback(async () => {
+    try {
+      setContentLoading(true);
+      const data = await fetchCampaignContent(campana.id);
+      setContent(data.content);
+      setMetricas(data.metricas);
+      setCreadoresSinPosteos(data.creadoresSinPosteos);
+    } catch (err) {
+      console.error('Failed to load campaign content:', err);
+    } finally {
+      setContentLoading(false);
+    }
+  }, [campana.id]);
+
+  useEffect(() => { loadContent(); }, [loadContent]);
+
+  async function handleAddUrl(creatorId: string) {
+    const url = (urlInputs[creatorId] || '').trim();
+    if (!url) return;
+    setAddingFor(creatorId);
+    try {
+      await addCampaignContent(campana.id, creatorId, url);
+      setUrlInputs(prev => ({ ...prev, [creatorId]: '' }));
+      await loadContent();
+    } catch (err) {
+      console.error('Failed to add content:', err);
+    } finally {
+      setAddingFor(null);
+    }
+  }
+
+  async function handleDeleteContent(contentId: string) {
+    try {
+      await deleteCampaignContent(campana.id, contentId);
+      await loadContent();
+    } catch (err) {
+      console.error('Failed to delete content:', err);
+    }
+  }
+
+  async function handleScrapeContent() {
+    setScrapingContent(true);
+    try {
+      const result = await scrapeCampaignContent(campana.id);
+      setContent(result.content);
+      setMetricas(result.metricas);
+    } catch (err) {
+      console.error('Failed to scrape content:', err);
+    } finally {
+      setScrapingContent(false);
+    }
+  }
 
   const estadoCfg = ESTADO_CAMPANA_CONFIG[campana.estado];
 
@@ -141,7 +255,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
           </button>
           {campana.estado !== 'Cerrada' && campana.estado !== 'Borrador' && (
             <button
-              onClick={() => onTogglePause(campana)}
+              onClick={() => { if (campana.estado === 'Pausada') onTogglePause(campana); else setShowPauseConfirm(true); }}
               className="flex items-center gap-2 px-3 py-2 border rounded-xl text-sm font-semibold transition-all duration-200"
               style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-2)' }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
@@ -166,7 +280,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
         </div>
       </div>
 
-      {/* Progress */}
+      {/* Progress + embudo (cifras funcionales, en chico) */}
       <div className="p-4 border rounded-xl" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-bold" style={{ color: 'var(--color-text-2)' }}>Progreso de campaña</span>
@@ -178,19 +292,209 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
             style={{ width: `${Math.min(progreso, 100)}%`, backgroundColor: 'var(--color-brand)' }}
           />
         </div>
-        <p className="text-[10px] font-mono mt-1" style={{ color: 'var(--color-text-3)' }}>{progreso}% completado</p>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5">
+          <span className="text-[10px] font-mono" style={{ color: 'var(--color-text-3)' }}>{progreso}% completado</span>
+          <span className="text-[10px]" style={{ color: 'var(--color-border)' }}>·</span>
+          {[
+            { label: 'enviados', value: enviados },
+            { label: 'respondidos', value: respondidos },
+            { label: 'pendientes', value: pendientes },
+            { label: 'calificados', value: calificados },
+          ].map(s => (
+            <span key={s.label} className="text-[11px]" style={{ color: 'var(--color-text-3)' }}>
+              <span className="font-mono font-bold" style={{ color: 'var(--color-text-2)' }}>{s.value}</span> {s.label}
+            </span>
+          ))}
+        </div>
       </div>
 
-      {/* KPI Strip */}
-      <div className="flex gap-3 flex-wrap">
-        <KPICard icon={<Mail className="w-5 h-5" />} label="Enviados" value={enviados}
-          note={`de ${campana.objetivo} objetivo`} trend="up" />
-        <KPICard icon={<BarChart3 className="w-5 h-5" />} label="Respondidos" value={respondidos}
-          note={enviados > 0 ? `${Math.round((respondidos / enviados) * 100)}% del total` : '—'} trend="up" />
-        <KPICard icon={<Users className="w-5 h-5" />} label="Pendientes" value={pendientes}
-          note="sin respuesta" />
-        <KPICard icon={<CheckCircle className="w-5 h-5" />} label="Calificados" value={calificados}
-          note={respondidos > 0 ? `${Math.round((calificados / respondidos) * 100)}% de respondidos` : '—'} trend="up" />
+      {/* ── Métricas clave de campaña (las elegidas con el cliente, públicas) ───── */}
+      <div className="border rounded-2xl p-4 flex flex-col gap-3" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+            <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Métricas de campaña</h3>
+            {metricas && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}>
+                {metricas.totalPosteos} posteos · {metricas.totalCreadoresConPosteos} creadores
+              </span>
+            )}
+          </div>
+          {campana.estado === 'Activa' && content.length > 0 && (
+            <button
+              onClick={handleScrapeContent}
+              disabled={scrapingContent}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all duration-200 active:scale-[0.97] disabled:opacity-60"
+              style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+              onMouseEnter={e => { if (!scrapingContent) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'; }}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
+            >
+              {scrapingContent ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              {scrapingContent ? 'Analizando…' : 'Analizar ahora'}
+            </button>
+          )}
+        </div>
+
+        <div className="flex gap-3 flex-wrap">
+          <MetricCard icon={<Eye className="w-4 h-4" />} label="Vistas"
+            value={metricas ? fmt(metricas.vistas) : null}
+            help="Suma de las reproducciones de todos los posteos cargados de la campaña." />
+          <MetricCard icon={<TrendingUp className="w-4 h-4" />} label="Engagement"
+            value={metricas && metricas.engagementRate != null ? `${metricas.engagementRate}%` : null}
+            help="Promedio ponderado por vistas: (likes + comentarios + compartidos + guardados) ÷ vistas × 100, sobre el total de posteos." />
+          <MetricCard icon={<Activity className="w-4 h-4" />} label="Interacciones"
+            value={metricas ? fmt(metricas.interacciones) : null}
+            help="Suma de likes + comentarios + compartidos + guardados de todos los posteos." />
+          <MetricCard icon={<Heart className="w-4 h-4" />} label="Likes"
+            value={metricas ? fmt(metricas.likes) : null}
+            help="Suma de likes de todos los posteos cargados de la campaña." />
+          <MetricCard icon={<MessageCircle className="w-4 h-4" />} label="Comentarios"
+            value={metricas ? fmt(metricas.comentarios) : null}
+            help="Suma de comentarios de todos los posteos cargados de la campaña." />
+          <MetricCard icon={<Share2 className="w-4 h-4" />} label="Compartidos"
+            value={metricas ? fmt(metricas.compartidos) : null}
+            help="Suma de veces compartido. En TikTok es público; en Instagram no se expone (puede quedar en 0)." />
+          <MetricCard icon={<Bookmark className="w-4 h-4" />} label="Guardados"
+            value={metricas ? fmt(metricas.guardados) : null}
+            help="Suma de guardados. En TikTok es público; en Instagram no se expone (puede quedar en 0)." />
+        </div>
+      </div>
+
+      {/* ── Posteos de campaña (carga de URLs + tops) ────────────────────────── */}
+      <div className="border rounded-2xl p-4 flex flex-col gap-4" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+        <div className="flex items-center gap-2">
+          <Link2 className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+          <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Posteos de campaña</h3>
+        </div>
+
+        {/* Warning: creadores sin posteos cargados */}
+        {creadoresSinPosteos.length > 0 && (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl border" style={{ backgroundColor: 'rgba(252,154,0,0.08)', borderColor: 'rgba(252,154,0,0.3)' }}>
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'rgb(180,83,9)' }} />
+            <div className="text-xs" style={{ color: 'rgb(146,64,14)' }}>
+              Las métricas están incompletas porque no se están teniendo en cuenta algunos posteos.
+              Falta cargar{' '}
+              <span className="font-bold">{creadoresSinPosteos.length}</span>{' '}
+              {creadoresSinPosteos.length === 1 ? 'creador' : 'creadores'}:{' '}
+              <span className="font-semibold">{creadoresSinPosteos.map(c => c.nombre).join(', ')}</span>.
+            </div>
+          </div>
+        )}
+
+        {/* Carga de URLs por creador */}
+        <div className="border rounded-xl overflow-hidden" style={{ borderColor: 'var(--color-border-subtle)' }}>
+          <div className="px-3 py-2 border-b flex items-center gap-2" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-alt)' }}>
+            <Link2 className="w-3.5 h-3.5" style={{ color: 'var(--color-text-3)' }} />
+            <span className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>Posteos por creador</span>
+          </div>
+          {contentLoading ? (
+            <div className="py-6 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--color-text-3)' }} /></div>
+          ) : campana.ugcs.length === 0 ? (
+            <p className="py-6 text-center text-xs italic" style={{ color: 'var(--color-text-3)' }}>No hay creadores asignados a esta campaña</p>
+          ) : (
+            <div className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
+              {campana.ugcs.map(uc => {
+                const ugc = ugcs.find(u => u.id === uc.ugcId);
+                if (!ugc) return null;
+                const piezas = content.filter(c => c.creatorId === uc.ugcId);
+                const av = avatarColor(ugc.id);
+                return (
+                  <div key={uc.ugcId} className="px-3 py-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-bold ${av}`}>{getInitials(ugc.nombre)}</div>
+                      <span className="text-sm font-semibold" style={{ color: 'var(--color-text-1)' }}>{ugc.nombre}</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}>
+                        {piezas.length} {piezas.length === 1 ? 'posteo' : 'posteos'}
+                      </span>
+                    </div>
+
+                    {/* Lista de posteos del creador */}
+                    {piezas.length > 0 && (
+                      <div className="flex flex-col gap-1.5 mb-2">
+                        {piezas.map(p => (
+                          <div key={p.id} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
+                            <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 min-w-0 flex-1 hover:underline" style={{ color: 'var(--color-text-2)' }}>
+                              <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                              <span className="truncate">{p.url}</span>
+                            </a>
+                            {p.views != null ? (
+                              <span className="font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>
+                                {fmt(p.views)} vistas · {p.engagementRate != null ? `${p.engagementRate}%` : '—'} ER
+                              </span>
+                            ) : p.scrapeError ? (
+                              <span className="font-mono flex-shrink-0 text-rose-500" title={p.scrapeError}>error</span>
+                            ) : (
+                              <span className="font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>sin métricas</span>
+                            )}
+                            <button onClick={() => handleDeleteContent(p.id)} title="Quitar posteo" className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors hover:text-rose-500" style={{ color: 'var(--color-text-3)' }}>
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Input para agregar URL */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="url"
+                        value={urlInputs[uc.ugcId] || ''}
+                        onChange={e => setUrlInputs(prev => ({ ...prev, [uc.ugcId]: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter') handleAddUrl(uc.ugcId); }}
+                        placeholder="Pegá la URL del posteo (Instagram o TikTok)…"
+                        className="flex-1 px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none transition-all duration-200"
+                        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
+                        onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)'; }}
+                        onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
+                      />
+                      <button
+                        onClick={() => handleAddUrl(uc.ugcId)}
+                        disabled={!((urlInputs[uc.ugcId] || '').trim()) || addingFor === uc.ugcId}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                        style={{ backgroundColor: 'var(--color-brand)', color: '#fff' }}
+                      >
+                        {addingFor === uc.ugcId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
+                        Agregar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Top creadores / Top contenidos */}
+        {metricas && metricas.topCreadores.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="border rounded-xl p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-3)' }}>Top creadores · por vistas</p>
+              <div className="space-y-1.5">
+                {metricas.topCreadores.slice(0, 5).map((c, i) => (
+                  <div key={c.creatorId} className="flex items-center gap-2 text-xs">
+                    <span className="font-mono w-4 text-center" style={{ color: 'var(--color-text-3)' }}>#{i + 1}</span>
+                    <span className="flex-1 truncate font-medium" style={{ color: 'var(--color-text-1)' }}>{c.nombre}</span>
+                    <span className="font-mono" style={{ color: 'var(--color-text-2)' }}>{fmt(c.vistas)} vistas</span>
+                    <span className="font-mono w-12 text-right" style={{ color: 'var(--color-text-3)' }}>{c.engagementRate != null ? `${c.engagementRate}%` : '—'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="border rounded-xl p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-3)' }}>Top contenidos · por vistas</p>
+              <div className="space-y-1.5">
+                {metricas.topContenidos.slice(0, 5).map((p, i) => (
+                  <div key={p.id} className="flex items-center gap-2 text-xs">
+                    <span className="font-mono w-4 text-center" style={{ color: 'var(--color-text-3)' }}>#{i + 1}</span>
+                    <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate font-medium hover:underline" style={{ color: 'var(--color-text-1)' }}>{p.creatorNombre}</a>
+                    <span className="font-mono" style={{ color: 'var(--color-text-2)' }}>{fmt(p.views)} vistas</span>
+                    <span className="font-mono w-12 text-right" style={{ color: 'var(--color-text-3)' }}>{p.engagementRate != null ? `${p.engagementRate}%` : '—'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Contactar creadores */}
@@ -379,6 +683,51 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
         onConfirm={() => { onDeleteCampana(campana); setShowDeleteConfirm(false); }}
         onCancel={() => setShowDeleteConfirm(false)}
       />
+
+      {/* Confirmación de pausa */}
+      {showPauseConfirm && (
+        <>
+          <div
+            className="fixed inset-0 z-50 overlay-enter"
+            style={{ backgroundColor: 'rgba(9,10,15,0.45)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setShowPauseConfirm(false)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
+            <div className="rounded-2xl p-6 max-w-sm w-full pointer-events-auto modal-enter border"
+              style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(252,154,0,0.1)' }}>
+                <Pause className="w-6 h-6" style={{ color: 'var(--color-brand)' }} />
+              </div>
+              <h3 className="text-lg font-black mb-1" style={{ color: 'var(--color-text-1)' }}>Pausar campaña</h3>
+              <p className="text-sm mb-5" style={{ color: 'var(--color-text-2)' }}>
+                Vas a pausar <span className="font-semibold" style={{ color: 'var(--color-text-1)' }}>"{campana.nombre}"</span>.
+                Mientras esté pausada se detienen los envíos y el contacto con creadores. Podés reanudarla cuando quieras.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { onTogglePause(campana); setShowPauseConfirm(false); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold transition-all duration-200 text-sm active:scale-[0.97]"
+                  style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
+                >
+                  <Pause className="w-4 h-4" />
+                  Pausar campaña
+                </button>
+                <button
+                  onClick={() => setShowPauseConfirm(false)}
+                  className="px-4 py-2.5 border rounded-xl font-semibold transition-all duration-200 text-sm"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Override Bot Modal */}
       {overrideUGC && (

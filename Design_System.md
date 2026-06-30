@@ -1,6 +1,6 @@
 # Sistema de Diseño — UGC Flow
 
-Este documento establece las directrices visuales, de componentes y de estilo para el proyecto **UGC Flow**. Está diseñado para garantizar una interfaz moderna, profesional y consistente, adaptada tanto para **Light Mode** como para **Dark Mode**, utilizando **Tailwind CSS v4** y la tipografía **DM Sans**.
+Este documento establece las directrices visuales, de componentes y de estilo para el proyecto **UGC Flow**. Está diseñado para garantizar una interfaz moderna, profesional y consistente, adaptada tanto para **Light Mode** como para **Dark Mode**, utilizando **Tailwind CSS v4** y la tipografía **Google Sans**.
 
 ---
 
@@ -78,12 +78,12 @@ Los siguientes colores son **fijos** — no deben reemplazarse por CSS vars — 
 
 ## 3. Tipografía
 
-El proyecto utiliza **DM Sans** para toda la interfaz (títulos, cuerpo, etiquetas) y **DM Mono** para elementos que contengan código o datos técnicos estructurados.
+El proyecto utiliza **Google Sans** para toda la interfaz (títulos, cuerpo, etiquetas **y métricas**). `font-mono` también apunta a Google Sans (con cifras tabulares) para que los números respeten la misma tipografía. La jerarquía se construye con **tamaño + peso**: Regular (400) para cuerpo, Medium (500) para texto secundario, Bold (700) para títulos y métricas clave.
 
 ```css
 /* Definición de la Jerarquía Tipográfica */
---font-sans: 'DM Sans', system-ui, sans-serif;
---font-mono: 'DM Mono', monospace;
+--font-sans: 'Google Sans', 'Product Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+--font-mono: 'Google Sans', 'Product Sans', system-ui, -apple-system, sans-serif;
 ```
 
 ### Escala de Tamaños y Pesos
@@ -161,8 +161,8 @@ Los nombres exactos de tokens que usa el código son los siguientes. **No crear 
 
 @theme {
   /* Fuentes */
-  --font-sans: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'DM Mono', monospace;
+  --font-sans: 'Google Sans', 'Product Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Google Sans', 'Product Sans', system-ui, -apple-system, sans-serif;
 
   /* Brand */
   --color-brand:           #fc9a00;

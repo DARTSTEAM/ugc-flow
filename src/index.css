@@ -1,9 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Fuentes ─────────────────────────────────────────────────────── */
-  --font-sans: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'DM Mono', monospace;
+  /* ── Fuentes ─────────────────────────────────────────────────────────
+     Todo el proyecto en Google Sans. Las métricas (que usan `font-mono`)
+     también apuntan a Google Sans para respetar la misma tipografía;
+     mantienen cifras tabulares para que los números queden alineados.
+     Google Sans ofrece Regular (400), Medium (500) y Bold (700): la
+     jerarquía se construye con tamaño + esos pesos.
+  ─────────────────────────────────────────────────────────────────────── */
+  --font-sans: 'Google Sans', 'Product Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Google Sans', 'Product Sans', system-ui, -apple-system, sans-serif;
 
   /* ── Colores de Marca ─────────────────────────────────────────────── */
   --color-brand:           #fc9a00;
@@ -71,6 +77,17 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  /* Las métricas (antes monoespaciadas) conservan números alineados en Google Sans. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Jerarquía: títulos/métricas bold se ven más nítidos con un tracking apenas negativo. */
+  .font-black, .font-bold {
+    letter-spacing: -0.011em;
   }
 
   ::-webkit-scrollbar { width: 5px; height: 5px; }

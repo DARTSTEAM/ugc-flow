@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom';
 import {
   X, MessageCircle, TrendingUp, Award, ChevronRight,
   Loader2, RefreshCw, AlertTriangle, CheckCircle2, BarChart2, Tv2, Pencil,
-  ChevronDown, Plus, HelpCircle, Megaphone,
+  ChevronDown, Plus, HelpCircle, Megaphone, Link2, ExternalLink,
 } from 'lucide-react';
-import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EstadoUGC } from '../data';
+import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EstadoUGC, ContenidoCampana } from '../data';
 import tiktokLogo from '../assets/tiktok-logo.png';
 import instagramLogo from '../assets/instagram-logo.png';
 import { scoreColor, ESTADO_UGC_CONFIG, getInitials, avatarColor, needsInfoUpdate, formatLastScraped } from '../utils';
-import { fetchCreatorDetail, updateCreator, updateEtiquetas, updateEvaluacionOrganica, updateEvaluacionPauta, scrapeCreator, scrapeTikTokCreator } from '../api';
+import { fetchCreatorDetail, updateCreator, updateEtiquetas, updateEvaluacionOrganica, updateEvaluacionPauta, scrapeCreator, scrapeTikTokCreator, fetchCreatorContent, addCampaignContent, deleteCampaignContent } from '../api';
 
 type DrawerTab = 'Perfil' | 'Contenido Orgánico' | 'Pauta' | 'Campañas';
 
@@ -315,6 +315,43 @@ export default function UGCDrawer({
   const [calificacionOpen, setCalificacionOpen] = useState(false);
   const [assignMenuOpen, setAssignMenuOpen] = useState(false);
 
+  // Contenido de campaña (posteos del creador, por campaña)
+  const [creatorContent, setCreatorContent] = useState<ContenidoCampana[]>([]);
+  const [contentUrlInputs, setContentUrlInputs] = useState<Record<string, string>>({});
+  const [addingContentFor, setAddingContentFor] = useState<string | null>(null);
+
+  async function reloadCreatorContent() {
+    try {
+      setCreatorContent(await fetchCreatorContent(ugcProp.id));
+    } catch (err) {
+      console.error('Failed to load creator content:', err);
+    }
+  }
+
+  async function handleAddContent(campaignId: string) {
+    const url = (contentUrlInputs[campaignId] || '').trim();
+    if (!url) return;
+    setAddingContentFor(campaignId);
+    try {
+      await addCampaignContent(campaignId, ugcProp.id, url);
+      setContentUrlInputs(prev => ({ ...prev, [campaignId]: '' }));
+      await reloadCreatorContent();
+    } catch (err) {
+      console.error('Failed to add content:', err);
+    } finally {
+      setAddingContentFor(null);
+    }
+  }
+
+  async function handleDeleteCreatorContent(campaignId: string, contentId: string) {
+    try {
+      await deleteCampaignContent(campaignId, contentId);
+      await reloadCreatorContent();
+    } catch (err) {
+      console.error('Failed to delete content:', err);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     async function loadDetail() {
@@ -362,6 +399,9 @@ export default function UGCDrawer({
       .then(data => {
         if (!cancelled && Array.isArray(data)) setAvailableEtiquetas(data);
       })
+      .catch(() => {});
+    fetchCreatorContent(ugcProp.id)
+      .then(data => { if (!cancelled) setCreatorContent(data); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [ugcProp.id]);
@@ -1583,26 +1623,81 @@ export default function UGCDrawer({
                     <div className="space-y-2">
                       {assignedCampaigns.map(c => {
                         const ugcInCamp = c.ugcs.find(u => u.ugcId === ugc.id);
+                        const piezas = creatorContent.filter(p => p.campaignId === c.id);
                         return (
                           <div
                             key={c.id}
-                            className="flex items-center justify-between px-3 py-2.5 rounded-xl border"
+                            className="px-3 py-2.5 rounded-xl border"
                             style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-alt)' }}
                           >
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                              <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text-1)' }}>{c.nombre}</span>
-                              {ugcInCamp && (
-                                <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>
-                                  Estado: {ugcInCamp.estado}
-                                </span>
-                              )}
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-col gap-0.5 min-w-0">
+                                <span className="text-sm font-medium truncate" style={{ color: 'var(--color-text-1)' }}>{c.nombre}</span>
+                                {ugcInCamp && (
+                                  <span className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>
+                                    Estado: {ugcInCamp.estado}
+                                  </span>
+                                )}
+                              </div>
+                              <span
+                                className="text-[10px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0 ml-2"
+                                style={estadoCampanaStyle(c.estado)}
+                              >
+                                {c.estado}
+                              </span>
                             </div>
-                            <span
-                              className="text-[10px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0 ml-2"
-                              style={estadoCampanaStyle(c.estado)}
-                            >
-                              {c.estado}
-                            </span>
+
+                            {/* Posteos del creador en esta campaña */}
+                            <div className="mt-2.5 pt-2.5 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                              <div className="flex items-center gap-1.5 mb-1.5">
+                                <Link2 className="w-3 h-3" style={{ color: 'var(--color-text-3)' }} />
+                                <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: 'var(--color-text-3)' }}>
+                                  Posteos ({piezas.length})
+                                </span>
+                              </div>
+                              {piezas.length > 0 && (
+                                <div className="flex flex-col gap-1 mb-1.5">
+                                  {piezas.map(p => (
+                                    <div key={p.id} className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg" style={{ backgroundColor: 'var(--color-surface)' }}>
+                                      <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 min-w-0 flex-1 hover:underline" style={{ color: 'var(--color-text-2)' }}>
+                                        <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
+                                        <span className="truncate">{p.url}</span>
+                                      </a>
+                                      {p.views != null && (
+                                        <span className="font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>
+                                          {p.views >= 1000 ? (p.views / 1000).toFixed(1) + 'K' : p.views} vistas
+                                        </span>
+                                      )}
+                                      <button onClick={() => handleDeleteCreatorContent(c.id, p.id)} title="Quitar" className="flex-shrink-0 w-4 h-4 flex items-center justify-center rounded hover:text-rose-500" style={{ color: 'var(--color-text-3)' }}>
+                                        <X className="w-2.5 h-2.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="url"
+                                  value={contentUrlInputs[c.id] || ''}
+                                  onChange={e => setContentUrlInputs(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                  onKeyDown={e => { if (e.key === 'Enter') handleAddContent(c.id); }}
+                                  placeholder="URL del posteo…"
+                                  className="flex-1 px-2 py-1 border rounded-lg text-[11px] focus:outline-none transition-all duration-200"
+                                  style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
+                                  onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; }}
+                                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; }}
+                                />
+                                <button
+                                  onClick={() => handleAddContent(c.id)}
+                                  disabled={!((contentUrlInputs[c.id] || '').trim()) || addingContentFor === c.id}
+                                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                                  style={{ backgroundColor: 'var(--color-brand)', color: '#fff' }}
+                                >
+                                  {addingContentFor === c.id ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Plus className="w-2.5 h-2.5" />}
+                                  Agregar
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         );
                       })}

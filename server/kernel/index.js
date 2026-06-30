@@ -1,6 +1,7 @@
 import { BigQuery } from '@google-cloud/bigquery';
 import { scrapeInstagramProfile } from './scrapers/instagram-profile.js';
 import { scrapeTikTokProfile } from './scrapers/tiktok-profile.js';
+import { scrapeContentPost, detectPlatform } from './scrapers/content-post.js';
 import { closeAllBrowsers, closeBrowser } from './browser-pool.js';
 import { recalcularScore } from '../score-service.js';
 
@@ -196,7 +197,117 @@ export async function scrapeTikTokProfiles(creatorIds) {
   return { success, failed, durationMs: Date.now() - start };
 }
 
+/**
+ * Scrapea las métricas públicas de cada pieza de contenido cargada para una campaña
+ * y las escribe en `campaign_content`. La atribución ya está resuelta (cada fila
+ * tiene la URL exacta del posteo), así que esto sólo lee stats por permalink.
+ *
+ * @param {string} campaignId
+ * @returns {{ success: string[], failed: Array<{id, reason}>, durationMs: number }}
+ */
+export async function scrapeCampaignContent(campaignId) {
+  const start = Date.now();
+
+  const [rows] = await bq.query({
+    query: `SELECT content_id, content_url, platform FROM ${DATASET}.campaign_content WHERE campaign_id = @campaignId`,
+    params: { campaignId },
+    location: 'US',
+  });
+
+  if (!rows.length) return { success: [], failed: [], durationMs: 0 };
+
+  const success = [];
+  const failed = [];
+
+  try {
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      const batch = rows.slice(i, i + BATCH_SIZE);
+
+      const results = await Promise.allSettled(
+        batch.map(piece =>
+          withRetry(
+            () => scrapeAndSaveContent(piece),
+            `CONTENT ${piece.content_url}`,
+            () => closeBrowser(detectPlatform(piece.content_url) ?? 'instagram')
+          )
+        )
+      );
+
+      results.forEach((result, j) => {
+        const piece = batch[j];
+        if (result.status === 'fulfilled' && result.value?.ok) {
+          success.push(piece.content_id);
+        } else {
+          const reason = result.status === 'rejected'
+            ? result.reason?.message
+            : result.value?.error ?? 'unknown';
+          console.error(`[Kernel/Content] Failed for ${piece.content_id} (${piece.content_url}):`, reason);
+          failed.push({ id: piece.content_id, reason });
+        }
+      });
+    }
+  } finally {
+    await closeAllBrowsers();
+  }
+
+  return { success, failed, durationMs: Date.now() - start };
+}
+
 // ─── Private ─────────────────────────────────────────────────────────────────
+
+async function scrapeAndSaveContent(piece) {
+  const data = await scrapeContentPost(piece.content_url);
+
+  if (data.error) {
+    // Persistir el error para mostrarlo en la UI sin romper el agregado
+    await bq.query({
+      query: `UPDATE ${DATASET}.campaign_content
+              SET scrape_error = @err, updated_at = CURRENT_TIMESTAMP()
+              WHERE content_id = @id`,
+      params: { id: piece.content_id, err: data.error },
+      location: 'US',
+    }).catch(() => {});
+    return { ok: false, error: data.error };
+  }
+
+  const interacciones =
+    (data.likes ?? 0) + (data.comments ?? 0) + (data.shares ?? 0) + (data.saves ?? 0);
+  const er = data.views > 0
+    ? parseFloat(((interacciones / data.views) * 100).toFixed(2))
+    : null;
+
+  await bq.query({
+    query: `
+      UPDATE ${DATASET}.campaign_content SET
+        org_views           = @views,
+        org_likes           = @likes,
+        org_comments        = @comments,
+        org_shares          = @shares,
+        org_saves           = @saves,
+        org_engagement_rate = @er,
+        org_last_scraped_at = CURRENT_TIMESTAMP(),
+        scrape_error        = NULL,
+        updated_at          = CURRENT_TIMESTAMP()
+      WHERE content_id = @id
+    `,
+    params: {
+      id:       piece.content_id,
+      views:    data.views    ?? null,
+      likes:    data.likes    ?? null,
+      comments: data.comments ?? null,
+      shares:   data.shares   ?? null,
+      saves:    data.saves    ?? null,
+      er,
+    },
+    types: {
+      views: 'INT64', likes: 'INT64', comments: 'INT64',
+      shares: 'INT64', saves: 'INT64', er: 'FLOAT64',
+    },
+    location: 'US',
+  });
+
+  return { ok: true };
+}
 
 async function scrapeAndSaveInstagram(creator) {
   if (!creator.username) {

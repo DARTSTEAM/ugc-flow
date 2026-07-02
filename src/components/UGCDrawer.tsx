@@ -495,7 +495,7 @@ export default function UGCDrawer({
     setEtiquetasLocales(next);
     setUgc(prev => ({ ...prev, etiquetas: next }));
     if (!availableEtiquetas.includes(trimmed)) {
-      setAvailableEtiquetas(prev => [...prev, trimmed].sort());
+      setAvailableEtiquetas(prev => [...prev, trimmed]);
     }
     try {
       await updateEtiquetas(ugc.id, next);

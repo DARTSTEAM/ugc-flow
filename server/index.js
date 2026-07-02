@@ -27,6 +27,33 @@ function contentIdFor(campaignId, url) {
   return `cnt_${(h >>> 0).toString(36)}`;
 }
 
+// ─── ETIQUETAS BASE ─────────────────────────────────────────────────
+// Opciones predefinidas para calificar UGCs. Se pueden seguir agregando
+// nuevas desde la UI (quedan persistidas en los creadores y se suman a esta lista).
+const DEFAULT_ETIQUETAS = [
+  'Foodie',
+  'Lifestyle',
+  'Familia',
+  'Mamás/Papás',
+  'Aesthetic',
+  'Moda',
+  'Humor',
+  'Entretenimiento',
+  'Fitness',
+  'Deportes',
+  'Fútbol',
+  'Viajes',
+  'Gaming',
+  'Universitarios',
+  'Jóvenes adultos',
+  'Lima',
+  'UGC Creator',
+  'Microinfluencer',
+  'Mid Influencer',
+  'Macro Influencer',
+  'Embajador de marca',
+];
+
 // ─── STATUS MAP ─────────────────────────────────────────────────────
 const STATUS_TO_ES = { active: 'Activa', draft: 'Borrador', completed: 'Cerrada', paused: 'Pausada' };
 const STATUS_TO_EN = { Activa: 'active', Borrador: 'draft', Cerrada: 'completed', Pausada: 'paused' };
@@ -244,11 +271,12 @@ app.patch('/api/creators/:id/etiquetas', async (req, res) => {
 app.get('/api/etiquetas', async (req, res) => {
   try {
     const rows = await q(`SELECT etiquetas FROM ${DATASET}.creators WHERE etiquetas IS NOT NULL AND etiquetas != '[]'`);
-    const tagSet = new Set();
+    const extra = new Set();
     rows.forEach(row => {
-      try { JSON.parse(row.etiquetas).forEach(t => tagSet.add(t)); } catch {}
+      try { JSON.parse(row.etiquetas).forEach(t => { if (!DEFAULT_ETIQUETAS.includes(t)) extra.add(t); }); } catch {}
     });
-    res.json([...tagSet].sort());
+    // Lista base (en orden definido) + etiquetas personalizadas creadas desde la UI (ordenadas)
+    res.json([...DEFAULT_ETIQUETAS, ...[...extra].sort()]);
   } catch (err) {
     console.error('GET /api/etiquetas error:', err);
     res.status(500).json({ error: err.message });
@@ -784,6 +812,222 @@ app.get('/api/creators/:id/content', async (req, res) => {
     console.error('GET /api/creators/:id/content error:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── TEST AGENT ──────────────────────────────────────────────────────
+
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
+const N8N_AUTH_VALUE  = process.env.N8N_AUTH_VALUE;
+
+if (!N8N_WEBHOOK_URL || !N8N_AUTH_VALUE) {
+  console.warn('⚠️  Test Agent: N8N_WEBHOOK_URL o N8N_AUTH_VALUE no están en .env — el chat con el agente no funcionará hasta que reinicies el servidor.');
+}
+
+// SSE: una entrada por conversación activa { conversationId → Express res }
+const sseClients = new Map();
+
+const NOMBRES_PE = [
+  'Valeria', 'Camila', 'Diego', 'Sofía', 'Andrés',
+  'Luciana', 'Carlos', 'Fernanda', 'Miguel', 'Daniela',
+  'Sebastián', 'Nicole', 'Luis', 'Gabriela', 'Rodrigo',
+];
+
+const GREETING_TEMPLATE =
+`¡Hola, [Nombre]! 😊 ¿Cómo estás?
+Te escribimos desde el equipo de Influencer Marketing de NGR, grupo que reúne marcas como Bembos, Chinawok, Don Belisario, Papa Johns, Dunkin, Popeyes y otras.
+Hemos estado siguiendo tu contenido y creemos que tu estilo podría conectar muy bien con futuras campañas de nuestras marcas. Nos gustaría conocerte mejor y tenerte en cuenta para próximas colaboraciones.
+Si te interesa, cuéntanos por este medio o compártenos tu correo para enviarte más información cuando surjan oportunidades.
+¡Esperamos poder trabajar contigo pronto! 🙌`;
+
+function genAgentId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// Llama al webhook de n8n y extrae el texto de la respuesta del agente.
+// n8n responde de forma síncrona; esperamos hasta 55 s antes de abortar.
+async function callN8N(sessionId, message, userName) {
+  if (!N8N_WEBHOOK_URL || !N8N_AUTH_VALUE) {
+    throw new Error('N8N_WEBHOOK_URL o N8N_AUTH_VALUE no configurados en .env');
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 55_000);
+
+  try {
+    const res = await fetch(N8N_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'nrg-ugc-auth': N8N_AUTH_VALUE,
+      },
+      body: JSON.stringify({ sessionId, chatInput: message, user_name: userName }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`n8n error ${res.status}: ${text}`);
+    }
+
+    const data = await res.json();
+
+    // n8n puede devolver varios formatos según el nodo de respuesta configurado
+    if (typeof data === 'string') return data;
+    const item = Array.isArray(data) ? data[0] : data;
+    return (
+      item?.output   ??
+      item?.text     ??
+      item?.reply    ??
+      item?.message  ??
+      item?.response ??
+      JSON.stringify(item)
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// POST /api/agent/conversations
+// Genera un sessionId único, registra la conversación en BQ y devuelve el saludo hardcodeado
+// con un nombre peruano aleatorio para hacer el roleplay más realista.
+app.post('/api/agent/conversations', async (req, res) => {
+  try {
+    const conversationId = genAgentId('conv');
+    const nombre = NOMBRES_PE[Math.floor(Math.random() * NOMBRES_PE.length)];
+    const greeting = GREETING_TEMPLATE.replace('[Nombre]', nombre);
+
+    await q(
+      `INSERT INTO ${DATASET}.agent_conversations (conversation_id, started_at) VALUES (@conversationId, CURRENT_TIMESTAMP())`,
+      { conversationId }
+    );
+    const msgId = genAgentId('msg');
+    await q(
+      `INSERT INTO ${DATASET}.agent_messages (message_id, conversation_id, role, content, created_at) VALUES (@msgId, @conversationId, 'assistant', @greeting, CURRENT_TIMESTAMP())`,
+      { msgId, conversationId, greeting }
+    );
+
+    res.json({ conversationId, greeting, userName: nombre });
+  } catch (err) {
+    console.error('POST /api/agent/conversations error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/agent/conversations/:id/messages
+// Reenvía el mensaje del usuario a n8n (con el sessionId para que mantenga el contexto)
+// y devuelve la respuesta del agente al frontend.
+app.post('/api/agent/conversations/:id/messages', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content, userName } = req.body;
+    if (!content?.trim()) return res.status(400).json({ error: 'content requerido' });
+
+    const reply = await callN8N(id, content.trim(), userName);
+
+    // Auditoría en BQ
+    const msgIdUser = genAgentId('msg');
+    await q(
+      `INSERT INTO ${DATASET}.agent_messages (message_id, conversation_id, role, content, created_at) VALUES (@msgIdUser, @id, 'user', @content, CURRENT_TIMESTAMP())`,
+      { msgIdUser, id, content: content.trim() }
+    );
+    const msgIdAI = genAgentId('msg');
+    await q(
+      `INSERT INTO ${DATASET}.agent_messages (message_id, conversation_id, role, content, created_at) VALUES (@msgIdAI, @id, 'assistant', @reply, CURRENT_TIMESTAMP())`,
+      { msgIdAI, id, reply }
+    );
+
+    res.json({ reply });
+  } catch (err) {
+    console.error('POST /api/agent/conversations/:id/messages error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/agent/conversations/:id/feedback — guarda el feedback del cliente sobre el chat
+app.post('/api/agent/conversations/:id/feedback', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { feedback } = req.body;
+    if (!feedback?.trim()) return res.status(400).json({ error: 'feedback requerido' });
+
+    await q(
+      `UPDATE ${DATASET}.agent_conversations SET feedback = @feedback, feedback_at = CURRENT_TIMESTAMP() WHERE conversation_id = @id`,
+      { id, feedback: feedback.trim() }
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('POST /api/agent/conversations/:id/feedback error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── SSE ─────────────────────────────────────────────────────────────
+// GET /api/agent/conversations/:id/events
+// El browser se conecta aquí al iniciar un chat. Mantiene el canal abierto
+// para recibir eventos push (ugc_update) en tiempo real.
+app.get('/api/agent/conversations/:id/events', (req, res) => {
+  const { id } = req.params;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // evita buffering en nginx/proxies
+  if (res.socket) res.socket.setNoDelay(true);
+  res.flushHeaders();
+
+  sseClients.set(id, res);
+
+  // Heartbeat cada 25 s para mantener viva la conexión
+  const heartbeat = setInterval(() => res.write(':ping\n\n'), 25_000);
+
+  req.on('close', () => {
+    sseClients.delete(id);
+    clearInterval(heartbeat);
+  });
+});
+
+// POST /api/agent/conversations/:id/update-ugc
+// n8n llama a este endpoint como tool. El servidor pushea los campos al browser
+// vía SSE. Requiere el mismo header de auth que el webhook.
+app.post('/api/agent/conversations/:id/update-ugc', (req, res) => {
+  const { id } = req.params;
+
+  if (req.headers['nrg-ugc-auth'] !== N8N_AUTH_VALUE) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const fields = req.body; // objeto arbitrario { campo: valor, ... }
+  const timestamp = new Date().toISOString();
+
+  const client = sseClients.get(id);
+  if (client) {
+    client.write(`data: ${JSON.stringify({ type: 'ugc_update', fields, timestamp })}\n\n`);
+  }
+
+  console.log(`[Test Agent] update-ugc conv=${id} notified=${!!client}`, fields);
+  res.json({ ok: true, notified: !!client });
+});
+
+// POST /api/agent/conversations/:id/human-handoff
+// n8n llama a este endpoint cuando el agente decide derivar a un humano.
+// Pushea un evento SSE de tipo 'human_handoff' al browser.
+app.post('/api/agent/conversations/:id/human-handoff', (req, res) => {
+  const { id } = req.params;
+
+  if (req.headers['nrg-ugc-auth'] !== N8N_AUTH_VALUE) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const fields = req.body;
+  const timestamp = new Date().toISOString();
+
+  const client = sseClients.get(id);
+  if (client) {
+    client.write(`data: ${JSON.stringify({ type: 'human_handoff', fields, timestamp })}\n\n`);
+  }
+
+  console.log(`[Test Agent] human-handoff conv=${id} notified=${!!client}`, fields);
+  res.json({ ok: true, notified: !!client });
 });
 
 // Export the app for use as Vite middleware

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Megaphone, Bell, ChevronRight, Sun, Moon, MessageSquare, ScanSearch, Star } from 'lucide-react';
+import { Users, Megaphone, Bell, ChevronRight, Sun, Moon, MessageSquare, ScanSearch, Star, BrainCircuit } from 'lucide-react';
 import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign, assignCreatorToCampaign, deleteCampaign } from './api';
 import type { UGC, Campana, EstadoEnCampana } from './data';
 import UGCsTab from './components/UGCsTab';
@@ -9,9 +9,10 @@ import CampanaDetail from './components/CampanaDetail';
 import NuevaCampanaModal from './components/NuevaCampanaModal';
 import ProspeccionTab from './components/ProspeccionTab';
 import RecomendacionesTab from './components/RecomendacionesTab';
+import TestAgentTab from './components/TestAgentTab';
 import logoNgr from './assets/Logo-ngr.png';
 
-type TabId = 'ugcs' | 'campanas' | 'chats' | 'prospeccion' | 'recomendaciones';
+type TabId = 'ugcs' | 'campanas' | 'chats' | 'prospeccion' | 'recomendaciones' | 'testagent';
 
 const NAV_ITEMS = [
   { id: 'ugcs' as TabId,             label: 'UGCs Activos',    icon: Users },
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { id: 'campanas' as TabId,         label: 'Campañas',        icon: Megaphone },
   { id: 'chats' as TabId,            label: 'Chats',           icon: MessageSquare },
   { id: 'recomendaciones' as TabId,  label: 'Recomendaciones', icon: Star },
+  { id: 'testagent' as TabId,        label: 'Test Agent',      icon: BrainCircuit },
 ];
 
 function useDarkMode() {
@@ -352,6 +354,7 @@ export default function App() {
                   {item.id === 'campanas' && campanas.length}
                   {item.id === 'chats' && ugcs.filter(u => u.unread).length}
                   {item.id === 'recomendaciones' && ugcs.filter(u => u.score > 0 && u.estado !== 'Descartado').length}
+                  {item.id === 'testagent' && 'AI'}
                 </span>
               </button>
             );
@@ -468,7 +471,7 @@ export default function App() {
         </header>
 
         {/* Content */}
-        <main className={`flex-1 ${activeTab === 'chats' ? 'p-0 overflow-hidden' : 'p-6 overflow-auto'}`} style={{ backgroundColor: 'var(--color-bg-app)' }}>
+        <main className={`flex-1 ${activeTab === 'chats' || activeTab === 'testagent' ? 'p-0 overflow-hidden' : 'p-6 overflow-auto'}`} style={{ backgroundColor: 'var(--color-bg-app)' }}>
           {activeTab === 'ugcs' && (
             <UGCsTab
               ugcs={ugcs}
@@ -512,6 +515,9 @@ export default function App() {
           )}
           {activeTab === 'recomendaciones' && (
             <RecomendacionesTab ugcs={ugcs} campanas={campanas} />
+          )}
+          {activeTab === 'testagent' && (
+            <TestAgentTab />
           )}
         </main>
       </div>

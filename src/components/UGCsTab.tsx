@@ -281,8 +281,10 @@ function FiltrosModal({ filterEstado, scoreMin, scoreMax, filterEtiquetas, avail
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
-          const merged = [...new Set([...data, ...availableEtiquetas])].sort();
-          setFreshEtiquetas(merged);
+          // Respetar el orden que envía el servidor (lista base + personalizadas);
+          // sumar al final cualquier etiqueta local que no esté todavía en la respuesta.
+          const extra = availableEtiquetas.filter(t => !data.includes(t));
+          setFreshEtiquetas([...data, ...extra]);
         }
       })
       .catch(() => {});

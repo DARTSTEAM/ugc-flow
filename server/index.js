@@ -826,6 +826,9 @@ if (!N8N_WEBHOOK_URL || !N8N_AUTH_VALUE) {
 // SSE: una entrada por conversación activa { conversationId → Express res }
 const sseClients = new Map();
 
+// Conversaciones que ya enviaron su primer mensaje a n8n (para el flag new_chat)
+const conversationsStarted = new Set();
+
 const NOMBRES_PE = [
   'Valeria', 'Camila', 'Diego', 'Sofía', 'Andrés',
   'Luciana', 'Carlos', 'Fernanda', 'Miguel', 'Daniela',
@@ -845,7 +848,7 @@ function genAgentId(prefix) {
 
 // Llama al webhook de n8n y extrae el texto de la respuesta del agente.
 // n8n responde de forma síncrona; esperamos hasta 55 s antes de abortar.
-async function callN8N(sessionId, message, userName) {
+async function callN8N(sessionId, message, userName, newChat) {
   if (!N8N_WEBHOOK_URL || !N8N_AUTH_VALUE) {
     throw new Error('N8N_WEBHOOK_URL o N8N_AUTH_VALUE no configurados en .env');
   }
@@ -859,7 +862,7 @@ async function callN8N(sessionId, message, userName) {
         'Content-Type': 'application/json',
         'nrg-ugc-auth': N8N_AUTH_VALUE,
       },
-      body: JSON.stringify({ sessionId, chatInput: message, user_name: userName }),
+      body: JSON.stringify({ sessionId, chatInput: message, user_name: userName, new_chat: newChat }),
       signal: controller.signal,
     });
 
@@ -921,7 +924,10 @@ app.post('/api/agent/conversations/:id/messages', async (req, res) => {
     const { content, userName } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'content requerido' });
 
-    const reply = await callN8N(id, content.trim(), userName);
+    const isNewChat = !conversationsStarted.has(id);
+    conversationsStarted.add(id);
+
+    const reply = await callN8N(id, content.trim(), userName, isNewChat);
 
     // Auditoría en BQ
     const msgIdUser = genAgentId('msg');

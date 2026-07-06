@@ -241,6 +241,12 @@ export default function TestAgentTab() {
   return (
     <div className="h-full flex overflow-hidden" style={{ backgroundColor: 'var(--color-bg-app)' }}>
 
+      {/* ── Chat + activity group: centered together as one box once side events arrive ── */}
+      <div
+        className="h-full flex gap-6 mx-auto min-w-0"
+        style={{ width: '100%', maxWidth: hasUpdates ? '61.5rem' : '42rem' }}
+      >
+
       {/* ── Chat column ──────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col items-center min-w-0 overflow-hidden">
 
@@ -387,10 +393,10 @@ export default function TestAgentTab() {
       {/* ── UGC updates panel ────────────────────────────────────────── */}
       {hasUpdates && (
         <div
-          className="w-72 flex-shrink-0 flex flex-col border-l overflow-hidden"
+          className="w-72 flex-shrink-0 flex flex-col rounded-2xl border overflow-hidden my-4"
           style={{
             borderColor: 'var(--color-border-subtle)',
-            backgroundColor: 'var(--color-bg-app)',
+            backgroundColor: 'var(--color-surface)',
             animation: 'slideInRight 0.28s ease-out both',
           }}
         >
@@ -415,6 +421,8 @@ export default function TestAgentTab() {
           </div>
         </div>
       )}
+
+      </div>
 
       {/* ── Feedback modal ────────────────────────────────────────────── */}
       {showFeedback && (

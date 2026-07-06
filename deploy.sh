@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROJECT="hike-agentic-playground"
 REGION="us-central1"
-SERVICE="ugc-flow"
+SERVICE="ngr-ugc"
 
 COMMIT_SHA=$(git rev-parse HEAD)
 

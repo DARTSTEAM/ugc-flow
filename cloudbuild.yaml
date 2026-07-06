@@ -16,7 +16,7 @@ steps:
     args:
       - run
       - deploy
-      - ugc-flow
+      - ngr-ugc
       - '--image=us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'
       - '--region=us-central1'
       - '--platform=managed'

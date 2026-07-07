@@ -10,7 +10,7 @@ import { computeCampaignMetrics } from './metrics-service.js';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '8mb' })); // la foto de perfil viaja como data URL en el body
 
 const bq = new BigQuery({ projectId: 'hike-agentic-playground' });
 const DATASET = 'ngr_ugc';
@@ -18,6 +18,10 @@ const DATASET = 'ngr_ugc';
 function q(sql, params, types) {
   return bq.query({ query: sql, params, types, location: 'US' }).then(([rows]) => rows);
 }
+
+// No hay autenticación todavía (ver UserProfileMenu.tsx), así que /api/profile
+// siempre lee/escribe este único usuario sembrado por sql/create-users-table.js.
+const CURRENT_USER_ID = 'user-001';
 
 /** content_id determinístico = hash(campaign_id|url) → re-cargar la misma URL es idempotente. */
 function contentIdFor(campaignId, url) {
@@ -263,6 +267,48 @@ app.patch('/api/creators/:id/etiquetas', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('PATCH /api/creators/:id/etiquetas error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/profile ───────────────────────────────────────────────
+app.get('/api/profile', async (req, res) => {
+  try {
+    const rows = await q(`
+      SELECT user_id, nombre, area, email, foto_url
+      FROM ${DATASET}.users
+      WHERE user_id = @id
+    `, { id: CURRENT_USER_ID });
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Perfil no encontrado' });
+
+    const u = rows[0];
+    res.json({ id: u.user_id, nombre: u.nombre, area: u.area, email: u.email, fotoUrl: u.foto_url });
+  } catch (err) {
+    console.error('GET /api/profile error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PUT /api/profile ───────────────────────────────────────────────
+app.put('/api/profile', async (req, res) => {
+  try {
+    const { nombre, area, email, fotoUrl } = req.body;
+
+    await q(`
+      UPDATE ${DATASET}.users SET
+        nombre = @nombre, area = @area, email = @email, foto_url = @fotoUrl,
+        updated_at = CURRENT_TIMESTAMP()
+      WHERE user_id = @id
+    `, {
+      id: CURRENT_USER_ID, nombre: nombre || '', area: area || '', email: email || null, fotoUrl: fotoUrl || null,
+    }, {
+      email: 'STRING', fotoUrl: 'STRING',
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PUT /api/profile error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -684,13 +730,37 @@ function mapContentRow(r) {
   };
 }
 
+/** Mapea el resultado en memoria de analyzeSentiment() (server/sentiment-service.js) al shape del frontend. */
+function mapSentiment(s) {
+  if (!s) return null;
+  return {
+    positivo: s.positive,
+    neutral: s.neutral,
+    negativo: s.negative,
+    muestras: s.sampleSize,
+    actualizadoEn: new Date().toISOString(),
+  };
+}
+
+/** Mapea una fila de `campaigns` (columnas sentiment_*) al shape del frontend. */
+function mapSentimentRow(r) {
+  if (!r?.sentiment_updated_at) return null;
+  return {
+    positivo: Number(r.sentiment_positive ?? 0),
+    neutral: Number(r.sentiment_neutral ?? 0),
+    negativo: Number(r.sentiment_negative ?? 0),
+    muestras: Number(r.sentiment_sample_size ?? 0),
+    actualizadoEn: r.sentiment_updated_at?.value ?? r.sentiment_updated_at,
+  };
+}
+
 // ─── GET /api/campaigns/:id/content ─────────────────────────────────
 // Devuelve { content, metricas, creadoresSinPosteos }.
 app.get('/api/campaigns/:id/content', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [contentRows, assigned] = await Promise.all([
+    const [contentRows, assigned, sentimentRows] = await Promise.all([
       q(`
         SELECT cc.*, c.full_name AS creator_nombre, c.eval_perfil_categoria AS creator_categoria
         FROM ${DATASET}.campaign_content cc
@@ -704,10 +774,15 @@ app.get('/api/campaigns/:id/content', async (req, res) => {
         LEFT JOIN ${DATASET}.creators c ON cc.creator_id = c.creator_id
         WHERE cc.campaign_id = @id
       `, { id }),
+      q(`
+        SELECT sentiment_positive, sentiment_neutral, sentiment_negative, sentiment_sample_size, sentiment_updated_at
+        FROM ${DATASET}.campaigns WHERE campaign_id = @id
+      `, { id }),
     ]);
 
     const content = contentRows.map(mapContentRow);
     const metricas = computeCampaignMetrics(contentRows);
+    const sentimiento = mapSentimentRow(sentimentRows[0]);
 
     // Creadores asignados a la campaña que aún no tienen NINGÚN posteo cargado
     const conPosteos = new Set(contentRows.map(r => r.creator_id));
@@ -717,7 +792,7 @@ app.get('/api/campaigns/:id/content', async (req, res) => {
       .filter(a => (seen.has(a.creator_id) ? false : (seen.add(a.creator_id), true)))
       .map(a => ({ id: a.creator_id, nombre: a.nombre || a.creator_id }));
 
-    res.json({ content, metricas, creadoresSinPosteos });
+    res.json({ content, metricas, creadoresSinPosteos, sentimiento });
   } catch (err) {
     console.error('GET /api/campaigns/:id/content error:', err);
     res.status(500).json({ error: err.message });
@@ -777,7 +852,7 @@ app.delete('/api/campaigns/:id/content/:contentId', async (req, res) => {
 app.post('/api/campaigns/:id/scrape-content', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await scrapeCampaignContent(id);
+    const { sentiment, ...result } = await scrapeCampaignContent(id);
 
     const contentRows = await q(`
       SELECT cc.*, c.full_name AS creator_nombre, c.eval_perfil_categoria AS creator_categoria
@@ -792,6 +867,7 @@ app.post('/api/campaigns/:id/scrape-content', async (req, res) => {
       ...result,
       content: contentRows.map(mapContentRow),
       metricas: computeCampaignMetrics(contentRows),
+      sentimiento: mapSentiment(sentiment),
     });
   } catch (err) {
     console.error('POST /api/campaigns/:id/scrape-content error:', err);

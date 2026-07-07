@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Rocket, Pause, Play, TrendingUp, Trash2,
-  ChevronDown, ChevronUp, ChevronsUpDown, Award,
+  ArrowLeft, Rocket, Pause, Play, Trash2,
+  ChevronDown, ChevronUp, ChevronsUpDown,
   MessageCircleMore, X, Send, Zap, MessageSquare, Loader2, RefreshCw,
-  Eye, Heart, MessageCircle, Share2, Bookmark, Link2, ExternalLink, AlertTriangle, Activity, HelpCircle, Sparkles
+  Eye, Heart, MessageCircle, Share2, Link2, ExternalLink, AlertTriangle, Activity, HelpCircle, Sparkles, Smile
 } from 'lucide-react';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
-import type { Campana, UGC, EstadoEnCampana, ContenidoCampana, MetricasCampana } from '../data';
+import instagramLogo from '../assets/instagram-logo.png';
+import tiktokLogo from '../assets/tiktok-logo.png';
+import type { Campana, UGC, EstadoEnCampana, ContenidoCampana, MetricasCampana, SentimientoCampana } from '../data';
 import {
   scoreColor, ESTADO_EN_CAMPANA_CONFIG, ESTADO_CAMPANA_CONFIG,
   getInitials, avatarColor
@@ -75,11 +77,14 @@ function Tip({ text, children }: { text: string; children: React.ReactNode }) {
 const NOT_ANALYZED_MSG = 'Todavía no se analizaron los posteos. Si querés analizarlos, presioná "Analizar ahora".';
 
 /**
- * Tarjeta de métrica clave de campaña. Si value es null (todavía no se analizó),
- * muestra un "—" gris bold con tooltip. Cada métrica tiene un "?" que explica su cálculo.
+ * Tarjeta de métrica clave de campaña.
+ * - value === null (todavía no se analizó la campaña) → "—" con tooltip genérico.
+ * - unavailable (se analizó, pero la plataforma no expone este dato) → "Sin calcular"
+ *   con tooltip explicando el motivo puntual.
+ * - si no, muestra el valor.
  */
-function MetricCard({ icon, label, value, help }: {
-  icon: React.ReactNode; label: string; value: string | null; help: string;
+function MetricCard({ icon, label, value, help, unavailable }: {
+  icon: React.ReactNode; label: string; value: string | null; help: string; unavailable?: string;
 }) {
   return (
     <div className="flex-1 min-w-[120px] p-3 border rounded-xl" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
@@ -89,7 +94,11 @@ function MetricCard({ icon, label, value, help }: {
           <HelpCircle className="w-3 h-3 cursor-help" style={{ color: 'var(--color-text-3)' }} />
         </Tip>
       </div>
-      {value != null ? (
+      {unavailable ? (
+        <Tip text={unavailable}>
+          <p className="text-sm font-bold cursor-help" style={{ color: 'var(--color-text-3)' }}>Sin calcular</p>
+        </Tip>
+      ) : value != null ? (
         <p className="text-xl font-black font-mono" style={{ color: 'var(--color-text-1)' }}>{value}</p>
       ) : (
         <Tip text={NOT_ANALYZED_MSG}>
@@ -97,6 +106,46 @@ function MetricCard({ icon, label, value, help }: {
         </Tip>
       )}
       <p className="text-[10px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'var(--color-text-3)' }}>{label}</p>
+    </div>
+  );
+}
+
+/**
+ * Barra de sentimiento (positivo/neutral/negativo) sobre la muestra de comentarios
+ * analizada por MiniMax. Si sentimiento es null, muestra el mismo placeholder "—"
+ * que MetricCard, con el mismo tooltip de "todavía no se analizó".
+ */
+function SentimentCard({ sentimiento }: { sentimiento: SentimientoCampana | null }) {
+  return (
+    <div className="flex-1 min-w-[240px] p-3 border rounded-xl" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="flex items-center gap-1.5" style={{ color: 'var(--color-text-3)' }}>
+          <Smile className="w-4 h-4" />
+        </span>
+        <Tip text="Clasificación con IA (MiniMax) de los últimos 10 comentarios de cada posteo cargado, mezclados en una sola muestra. Positivo/negativo se calculan sobre el total de la muestra; neutral sale por diferencia para sumar 100%.">
+          <HelpCircle className="w-3 h-3 cursor-help" style={{ color: 'var(--color-text-3)' }} />
+        </Tip>
+      </div>
+      {sentimiento ? (
+        <>
+          <div className="flex h-2 rounded-full overflow-hidden mb-2" style={{ backgroundColor: 'var(--color-border)' }}>
+            <div style={{ width: `${sentimiento.positivo}%`, backgroundColor: '#10b981' }} />
+            <div style={{ width: `${sentimiento.neutral}%`, backgroundColor: 'var(--color-text-3)', opacity: 0.35 }} />
+            <div style={{ width: `${sentimiento.negativo}%`, backgroundColor: '#f43f5e' }} />
+          </div>
+          <div className="flex items-center gap-3 text-xs font-mono font-bold">
+            <span style={{ color: '#10b981' }}>{sentimiento.positivo}% pos</span>
+            <span style={{ color: 'var(--color-text-3)' }}>{sentimiento.neutral}% neu</span>
+            <span style={{ color: '#f43f5e' }}>{sentimiento.negativo}% neg</span>
+          </div>
+          <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-3)' }}>sobre {sentimiento.muestras} comentarios</p>
+        </>
+      ) : (
+        <Tip text={NOT_ANALYZED_MSG}>
+          <span className="text-xl font-black font-mono cursor-help" style={{ color: 'var(--color-text-3)' }}>—</span>
+        </Tip>
+      )}
+      <p className="text-[10px] font-bold uppercase tracking-wider mt-1.5" style={{ color: 'var(--color-text-3)' }}>Sentimiento de comentarios</p>
     </div>
   );
 }
@@ -118,6 +167,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   // ── Contenido de campaña + métricas ──
   const [content, setContent] = useState<ContenidoCampana[]>([]);
   const [metricas, setMetricas] = useState<MetricasCampana | null>(null);
+  const [sentimiento, setSentimiento] = useState<SentimientoCampana | null>(null);
   const [creadoresSinPosteos, setCreadoresSinPosteos] = useState<{ id: string; nombre: string }[]>([]);
   const [contentLoading, setContentLoading] = useState(true);
   const [scrapingContent, setScrapingContent] = useState(false);
@@ -130,6 +180,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       const data = await fetchCampaignContent(campana.id);
       setContent(data.content);
       setMetricas(data.metricas);
+      setSentimiento(data.sentimiento);
       setCreadoresSinPosteos(data.creadoresSinPosteos);
     } catch (err) {
       console.error('Failed to load campaign content:', err);
@@ -170,6 +221,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       const result = await scrapeCampaignContent(campana.id);
       setContent(result.content);
       setMetricas(result.metricas);
+      setSentimiento(result.sentimiento);
     } catch (err) {
       console.error('Failed to scrape content:', err);
     } finally {
@@ -211,12 +263,6 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       else cmp = a.uc.fechaEnvio.localeCompare(b.uc.fechaEnvio);
       return sortDir === 'asc' ? cmp : -cmp;
     });
-
-  const ranking = campana.ugcs
-    .filter(uc => uc.estado === 'Calificado')
-    .map(uc => ugcs.find(u => u.id === uc.ugcId))
-    .filter(Boolean)
-    .sort((a, b) => b!.score - a!.score) as UGC[];
 
   return (
     <div className="h-full flex flex-col gap-5">
@@ -338,10 +384,10 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
         <div className="flex gap-3 flex-wrap">
           <MetricCard icon={<Eye className="w-4 h-4" />} label="Vistas"
             value={metricas ? fmt(metricas.vistas) : null}
-            help="Suma de las reproducciones de todos los posteos cargados de la campaña." />
-          <MetricCard icon={<TrendingUp className="w-4 h-4" />} label="Engagement"
-            value={metricas && metricas.engagementRate != null ? `${metricas.engagementRate}%` : null}
-            help="Promedio ponderado por vistas: (likes + comentarios + compartidos + guardados) ÷ vistas × 100, sobre el total de posteos." />
+            unavailable={metricas && !metricas.vistasDisponibles
+              ? 'Ningún posteo de esta campaña tiene datos de vistas. Instagram sólo mide vistas en video/Reels — los posteos de foto o carrusel no tienen este dato en la plataforma (no está oculto, directamente no existe).'
+              : undefined}
+            help="Suma de las reproducciones de todos los posteos cargados de la campaña. Sólo existe para video/Reels." />
           <MetricCard icon={<Activity className="w-4 h-4" />} label="Interacciones"
             value={metricas ? fmt(metricas.interacciones) : null}
             help="Suma de likes + comentarios + compartidos + guardados de todos los posteos." />
@@ -353,10 +399,8 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
             help="Suma de comentarios de todos los posteos cargados de la campaña." />
           <MetricCard icon={<Share2 className="w-4 h-4" />} label="Compartidos"
             value={metricas ? fmt(metricas.compartidos) : null}
-            help="Suma de veces compartido. En TikTok es público; en Instagram no se expone (puede quedar en 0)." />
-          <MetricCard icon={<Bookmark className="w-4 h-4" />} label="Guardados"
-            value={metricas ? fmt(metricas.guardados) : null}
-            help="Suma de guardados. En TikTok es público; en Instagram no se expone (puede quedar en 0)." />
+            help="Suma de veces compartido. En TikTok es el conteo público de shares; en Instagram es media_repost_count (veces que resubieron el contenido con Repost, el único agregado público de este tipo que expone la plataforma)." />
+          <SentimentCard sentimiento={sentimiento} />
         </div>
       </div>
 
@@ -464,34 +508,42 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
           )}
         </div>
 
-        {/* Top creadores / Top contenidos */}
-        {metricas && metricas.topCreadores.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="border rounded-xl p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
-              <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-3)' }}>Top creadores · por vistas</p>
-              <div className="space-y-1.5">
-                {metricas.topCreadores.slice(0, 5).map((c, i) => (
-                  <div key={c.creatorId} className="flex items-center gap-2 text-xs">
-                    <span className="font-mono w-4 text-center" style={{ color: 'var(--color-text-3)' }}>#{i + 1}</span>
-                    <span className="flex-1 truncate font-medium" style={{ color: 'var(--color-text-1)' }}>{c.nombre}</span>
-                    <span className="font-mono" style={{ color: 'var(--color-text-2)' }}>{fmt(c.vistas)} vistas</span>
-                    <span className="font-mono w-12 text-right" style={{ color: 'var(--color-text-3)' }}>{c.engagementRate != null ? `${c.engagementRate}%` : '—'}</span>
+        {/* Top contenidos por interacción */}
+        {metricas && metricas.topContenidos.length > 0 && (
+          <div className="border rounded-xl p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+            <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-3)' }}>Top contenidos · por interacción</p>
+            <div className="flex flex-col">
+              {metricas.topContenidos.slice(0, 5).map((p, i) => {
+                const av = avatarColor(p.creatorId);
+                const platformLogo = p.platform === 'instagram' ? instagramLogo : p.platform === 'tiktok' ? tiktokLogo : null;
+                return (
+                  <div key={p.id} className="flex items-center gap-2.5 py-1.5 px-1.5 rounded-lg transition-colors duration-150"
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+                  >
+                    <span className="flex items-center justify-center w-5 h-5 rounded-md text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}>
+                      {i + 1}
+                    </span>
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${av}`}>
+                      {getInitials(p.creatorNombre)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-1)' }}>{p.creatorNombre}</span>
+                        {platformLogo && <img src={platformLogo} alt={p.platform} className="w-3 h-3 object-contain flex-shrink-0" />}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs mt-0.5">
+                        <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-semibold hover:underline" style={{ color: 'var(--color-brand)' }}>
+                          <ExternalLink className="w-3 h-3" />
+                          Ver Posteo
+                        </a>
+                        <span style={{ color: 'var(--color-border)' }}>·</span>
+                        <span className="font-mono" style={{ color: 'var(--color-text-2)' }}>{fmt(p.interacciones)} interacciones</span>
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
-            <div className="border rounded-xl p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
-              <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-3)' }}>Top contenidos · por vistas</p>
-              <div className="space-y-1.5">
-                {metricas.topContenidos.slice(0, 5).map((p, i) => (
-                  <div key={p.id} className="flex items-center gap-2 text-xs">
-                    <span className="font-mono w-4 text-center" style={{ color: 'var(--color-text-3)' }}>#{i + 1}</span>
-                    <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex-1 truncate font-medium hover:underline" style={{ color: 'var(--color-text-1)' }}>{p.creatorNombre}</a>
-                    <span className="font-mono" style={{ color: 'var(--color-text-2)' }}>{fmt(p.views)} vistas</span>
-                    <span className="font-mono w-12 text-right" style={{ color: 'var(--color-text-3)' }}>{p.engagementRate != null ? `${p.engagementRate}%` : '—'}</span>
-                  </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -626,48 +678,6 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
           </table>
         </div>
       </div>
-
-      {/* Ranking panel */}
-      {ranking.length > 0 && (
-        <div className="border rounded-2xl p-4" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-3)' }}>
-            <Award className="w-3.5 h-3.5 text-amber-400" />
-            Ranking de candidatos
-          </h3>
-          <div className="space-y-2">
-            {ranking.map((ugc, i) => {
-              const sc = scoreColor(ugc.score);
-              const av = avatarColor(ugc.id);
-              return (
-                <div key={ugc.id} className="flex items-center gap-3 p-2.5 rounded-xl transition-colors duration-150"
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
-                >
-                  <span className="text-xs font-black font-mono w-4 text-center" style={{ color: 'var(--color-text-3)' }}>#{i + 1}</span>
-                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold ${av}`}>
-                    {getInitials(ugc.nombre)}
-                  </div>
-                  <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--color-text-1)' }}>{ugc.nombre}</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
-                      <div className={`h-full ${sc.bar} rounded-full`} style={{ width: `${ugc.score}%` }} />
-                    </div>
-                    <span className={`text-xs font-mono font-bold ${sc.text} w-6`}>{ugc.score}</span>
-                  </div>
-                  <button
-                    className="px-3 py-1 text-xs font-semibold rounded-xl transition-all duration-200"
-                    style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', border: '1px solid var(--color-brand-border)' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#ffe8b5'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-light)'}
-                  >
-                    Seleccionar
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {showEnvioModal && (
         <ConfirmarEnvioModal

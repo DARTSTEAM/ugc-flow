@@ -126,15 +126,9 @@ export interface MetricasCampana {
   guardados: number;
   interacciones: number;
   engagementRate: number | null;
-  topCreadores: Array<{
-    creatorId: string;
-    nombre: string;
-    categoria: string | null;
-    posteos: number;
-    vistas: number;
-    interacciones: number;
-    engagementRate: number | null;
-  }>;
+  /** false si ningún posteo tiene dato de vistas (p.ej. sólo fotos/carruseles de Instagram) — el 0 no es un valor real. */
+  vistasDisponibles: boolean;
+  /** Ordenado por interacciones descendente. */
   topContenidos: Array<{
     id: string;
     creatorId: string;
@@ -151,10 +145,24 @@ export interface MetricasCampana {
   }>;
 }
 
+/**
+ * Sentimiento agregado de campaña: % positivo/neutral/negativo sobre los
+ * últimos `muestras` comentarios (últimos 10 por posteo, mezclados sin
+ * distinguir creador/posteo de origen), clasificados por MiniMax.
+ */
+export interface SentimientoCampana {
+  positivo: number;
+  neutral: number;
+  negativo: number;
+  muestras: number;
+  actualizadoEn: string | null;
+}
+
 export interface CampaignContentResponse {
   content: ContenidoCampana[];
   metricas: MetricasCampana | null;
   creadoresSinPosteos: Array<{ id: string; nombre: string }>;
+  sentimiento: SentimientoCampana | null;
 }
 
 export interface UGCEnCampana {
@@ -175,4 +183,13 @@ export interface Campana {
   ugcs: UGCEnCampana[];
   marca?: string;
   mensajeContacto?: string;  // template de WhatsApp para outreach masivo
+}
+
+/** Perfil del usuario logueado. Sin autenticación real todavía, es un único registro (ver /api/profile). */
+export interface UserProfile {
+  id: string;
+  nombre: string;
+  area: string;
+  email: string | null;
+  fotoUrl: string | null;   // data URL (base64) o link externo
 }

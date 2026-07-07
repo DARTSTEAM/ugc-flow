@@ -46,33 +46,15 @@ export function computeCampaignMetrics(rows) {
     ? parseFloat(((interacciones / vistas) * 100).toFixed(2))
     : null;
 
-  // ── Agregado por creador (para Top creadores) ──
-  const porCreador = new Map();
-  for (const r of conMetricas) {
-    const key = r.creator_id;
-    if (!porCreador.has(key)) {
-      porCreador.set(key, {
-        creatorId: key,
-        nombre: r.creator_nombre || key,
-        categoria: r.creator_categoria || null,
-        posteos: 0, vistas: 0, interacciones: 0,
-      });
-    }
-    const acc = porCreador.get(key);
-    acc.posteos      += 1;
-    acc.vistas       += num(r.org_views);
-    acc.interacciones += interaccionesDe(r);
-  }
-  const topCreadores = [...porCreador.values()]
-    .map(c => ({
-      ...c,
-      engagementRate: c.vistas > 0
-        ? parseFloat(((c.interacciones / c.vistas) * 100).toFixed(2))
-        : null,
-    }))
-    .sort((a, b) => b.vistas - a.vistas);
+  // Instagram no expone "vistas" para posteos de foto/carrusel (no es que el dato esté
+  // oculto, directamente no existe). Si NINGÚN posteo tiene org_views, la suma en 0 no
+  // representa "cero vistas" sino "no hay nada que sumar" — el frontend debe distinguirlo.
+  const vistasDisponibles = conMetricas.some(r => r.org_views != null);
 
-  // ── Top contenidos ──
+  // Sólo se usa para el conteo "X posteos · Y creadores" del header de la sección.
+  const creadoresConPosteos = new Set(conMetricas.map(r => r.creator_id));
+
+  // ── Top contenidos, por interacciones (no por vistas: en Instagram no siempre hay vistas) ──
   const topContenidos = conMetricas
     .map(r => ({
       id: r.content_id,
@@ -88,14 +70,14 @@ export function computeCampaignMetrics(rows) {
       engagementRate: r.org_engagement_rate != null ? Number(r.org_engagement_rate) : null,
       interacciones: interaccionesDe(r),
     }))
-    .sort((a, b) => (b.views ?? 0) - (a.views ?? 0));
+    .sort((a, b) => b.interacciones - a.interacciones);
 
   return {
     totalPosteos: conMetricas.length,
-    totalCreadoresConPosteos: porCreador.size,
+    totalCreadoresConPosteos: creadoresConPosteos.size,
     vistas, likes, comentarios, compartidos, guardados, interacciones,
     engagementRate,
-    topCreadores,
+    vistasDisponibles,
     topContenidos,
   };
 }

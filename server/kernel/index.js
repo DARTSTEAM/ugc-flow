@@ -4,6 +4,7 @@ import { scrapeTikTokProfile } from './scrapers/tiktok-profile.js';
 import { scrapeContentPost, detectPlatform } from './scrapers/content-post.js';
 import { closeAllBrowsers, closeBrowser } from './browser-pool.js';
 import { recalcularScore } from '../score-service.js';
+import { analyzeSentiment } from '../sentiment-service.js';
 
 const bq = new BigQuery({ projectId: 'hike-agentic-playground' });
 const DATASET = 'ngr_ugc';
@@ -202,8 +203,12 @@ export async function scrapeTikTokProfiles(creatorIds) {
  * y las escribe en `campaign_content`. La atribución ya está resuelta (cada fila
  * tiene la URL exacta del posteo), así que esto sólo lee stats por permalink.
  *
+ * De paso, junta los últimos 10 comentarios de CADA posteo en una única lista
+ * global (sin distinguir creador/posteo de origen) y la manda a analyzeSentiment()
+ * para recalcular el sentimiento de la campaña.
+ *
  * @param {string} campaignId
- * @returns {{ success: string[], failed: Array<{id, reason}>, durationMs: number }}
+ * @returns {{ success: string[], failed: Array<{id, reason}>, durationMs: number, sentiment: object|null }}
  */
 export async function scrapeCampaignContent(campaignId) {
   const start = Date.now();
@@ -214,10 +219,11 @@ export async function scrapeCampaignContent(campaignId) {
     location: 'US',
   });
 
-  if (!rows.length) return { success: [], failed: [], durationMs: 0 };
+  if (!rows.length) return { success: [], failed: [], durationMs: 0, sentiment: null };
 
   const success = [];
   const failed = [];
+  const allCommentTexts = [];
 
   try {
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
@@ -237,6 +243,7 @@ export async function scrapeCampaignContent(campaignId) {
         const piece = batch[j];
         if (result.status === 'fulfilled' && result.value?.ok) {
           success.push(piece.content_id);
+          if (result.value.commentTexts?.length) allCommentTexts.push(...result.value.commentTexts);
         } else {
           const reason = result.status === 'rejected'
             ? result.reason?.message
@@ -250,7 +257,14 @@ export async function scrapeCampaignContent(campaignId) {
     await closeAllBrowsers();
   }
 
-  return { success, failed, durationMs: Date.now() - start };
+  let sentiment = null;
+  try {
+    sentiment = await analyzeSentiment(campaignId, allCommentTexts);
+  } catch (err) {
+    console.error('[Kernel/Content] Sentiment analysis failed:', err.message);
+  }
+
+  return { success, failed, durationMs: Date.now() - start, sentiment };
 }
 
 // ─── Private ─────────────────────────────────────────────────────────────────
@@ -306,7 +320,7 @@ async function scrapeAndSaveContent(piece) {
     location: 'US',
   });
 
-  return { ok: true };
+  return { ok: true, commentTexts: data.commentTexts ?? [] };
 }
 
 async function scrapeAndSaveInstagram(creator) {

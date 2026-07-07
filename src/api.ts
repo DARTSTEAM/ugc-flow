@@ -1,4 +1,4 @@
-import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana } from './data';
+import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana, SentimientoCampana, UserProfile } from './data';
 
 const BASE = '/api';
 
@@ -174,10 +174,23 @@ export async function deleteCampaignContent(campaignId: string, contentId: strin
 
 export async function scrapeCampaignContent(
   campaignId: string
-): Promise<{ ok: boolean; success: string[]; failed: Array<{ id: string; reason: string }>; content: ContenidoCampana[]; metricas: MetricasCampana | null; durationMs: number }> {
+): Promise<{ ok: boolean; success: string[]; failed: Array<{ id: string; reason: string }>; content: ContenidoCampana[]; metricas: MetricasCampana | null; sentimiento: SentimientoCampana | null; durationMs: number }> {
   return json(`/campaigns/${campaignId}/scrape-content`, { method: 'POST' });
 }
 
 export async function fetchCreatorContent(creatorId: string): Promise<ContenidoCampana[]> {
   return json<ContenidoCampana[]>(`/creators/${creatorId}/content`);
+}
+
+// ─── Profile ────────────────────────────────────────────────────────
+
+export async function fetchProfile(): Promise<UserProfile> {
+  return json<UserProfile>('/profile');
+}
+
+export async function updateProfile(profile: Pick<UserProfile, 'nombre' | 'area' | 'email' | 'fotoUrl'>): Promise<void> {
+  await json('/profile', {
+    method: 'PUT',
+    body: JSON.stringify(profile),
+  });
 }

@@ -1,14 +1,16 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, ChevronDown, ChevronUp, ChevronsUpDown,
   Eye, MessageCircle, Trash2, SlidersHorizontal, X,
   Filter, UserPlus, Instagram, Mail, MessageSquare, AlertTriangle
 } from 'lucide-react';
-import type { UGC, EstadoUGC, Canal, Campana } from '../data';
+import type { UGC, Canal, Campana } from '../data';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import {
   scoreColor, ESTADO_UGC_CONFIG,
-  getInitials, avatarColor, needsInfoUpdate
+  getInitials, avatarColor, needsInfoUpdate,
+  parseFollowersNum, haTrabajadoConNGR
 } from '../utils';
 import UGCDrawer from './UGCDrawer';
 
@@ -25,7 +27,6 @@ interface Props {
 type SortKey = 'nombre' | 'estado' | 'score' | 'ultimaActividad';
 type SortDir = 'asc' | 'desc';
 
-const ESTADOS: EstadoUGC[] = ['Nuevo', 'Contactado', 'Respondió', 'Calificado', 'Descartado'];
 const CANALES: Canal[] = ['WhatsApp', 'Instagram', 'Email'];
 
 // ─── Overlay helper ──────────────────────────────────────────────────────────
@@ -118,63 +119,26 @@ function useInputFocus() {
   };
 }
 
-// ─── Dual Range Slider ────────────────────────────────────────────────────────
-function DualRangeSlider({
-  min = 0, max = 100, valueMin, valueMax, onChangeMin, onChangeMax,
-}: {
-  min?: number; max?: number;
-  valueMin: number; valueMax: number;
-  onChangeMin: (v: number) => void;
-  onChangeMax: (v: number) => void;
-}) {
-  // Draft states allow the user to clear the field and type freely.
+// ─── Minimum Number Input ─────────────────────────────────────────────────────
+function MinNumberInput({ value, onChange, max = Infinity, suffix, showScoreBar }: { value: number; onChange: (v: number) => void; max?: number; suffix?: string; showScoreBar?: boolean }) {
+  // Draft state allows the user to clear the field and type freely.
   // On blur, if the draft is empty/invalid, it snaps back to the committed value.
-  const [draftMin, setDraftMin] = useState(String(valueMin));
-  const [draftMax, setDraftMax] = useState(String(valueMax));
+  const [draft, setDraft] = useState(String(value));
 
-  // Keep drafts in sync when external values change (e.g., slider drag)
-  useEffect(() => setDraftMin(String(valueMin)), [valueMin]);
-  useEffect(() => setDraftMax(String(valueMax)), [valueMax]);
+  useEffect(() => setDraft(String(value)), [value]);
 
-  const clampMin = (v: number) => Math.max(min, Math.min(v, valueMax));
-  const clampMax = (v: number) => Math.min(max, Math.max(v, valueMin));
-
-  const pctMin = ((valueMin - min) / (max - min)) * 100;
-  const pctMax = ((valueMax - min) / (max - min)) * 100;
-
-  const handleInputChangeMin = (val: string) => {
-    if (/^\d*$/.test(val)) {
-      setDraftMin(val);
-    }
-  };
-
-  const handleInputChangeMax = (val: string) => {
-    if (/^\d*$/.test(val)) {
-      setDraftMax(val);
-    }
-  };
-
-  function handleBlurMin() {
-    const v = parseInt(draftMin, 10);
-    if (isNaN(v) || draftMin.trim() === '') {
-      setDraftMin(String(valueMin)); // restore previous
-    } else {
-      const valBetween0And100 = Math.max(0, Math.min(v, 100));
-      const finalVal = Math.min(valBetween0And100, valueMax);
-      onChangeMin(finalVal);
-      setDraftMin(String(finalVal));
-    }
+  function handleChange(val: string) {
+    if (/^\d*$/.test(val)) setDraft(val);
   }
 
-  function handleBlurMax() {
-    const v = parseInt(draftMax, 10);
-    if (isNaN(v) || draftMax.trim() === '') {
-      setDraftMax(String(valueMax)); // restore previous
+  function handleBlur() {
+    const v = parseInt(draft, 10);
+    if (isNaN(v) || draft.trim() === '') {
+      setDraft(String(value)); // restore previous
     } else {
-      const valBetween0And100 = Math.max(0, Math.min(v, 100));
-      const finalVal = Math.max(valBetween0And100, valueMin);
-      onChangeMax(finalVal);
-      setDraftMax(String(finalVal));
+      const clamped = Math.max(0, Math.min(v, max));
+      onChange(clamped);
+      setDraft(String(clamped));
     }
   }
 
@@ -184,94 +148,105 @@ function DualRangeSlider({
     color: 'var(--color-text-1)',
   };
 
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Number inputs */}
-      <div className="flex items-center gap-3">
-        <div className="flex flex-col items-center gap-1 flex-1">
-          <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-3)' }}>Mínimo</label>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={draftMin}
-            onChange={e => handleInputChangeMin(e.target.value)}
-            onBlur={handleBlurMin}
-            onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
-            className="w-full text-center px-2 py-1.5 border rounded-xl text-sm font-medium focus:outline-none transition-all duration-200"
-            style={numStyle}
-            onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)'; e.currentTarget.select(); }}
-            onBlurCapture={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
-          />
-        </div>
-        <div className="w-6 h-px mt-4 flex-shrink-0" style={{ backgroundColor: 'var(--color-border)' }} />
-        <div className="flex flex-col items-center gap-1 flex-1">
-          <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-3)' }}>Máximo</label>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={draftMax}
-            onChange={e => handleInputChangeMax(e.target.value)}
-            onBlur={handleBlurMax}
-            onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
-            className="w-full text-center px-2 py-1.5 border rounded-xl text-sm font-medium focus:outline-none transition-all duration-200"
-            style={numStyle}
-            onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)'; e.currentTarget.select(); }}
-            onBlurCapture={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
-          />
-        </div>
-      </div>
+  const liveValue = Math.max(0, Math.min(parseInt(draft, 10) || 0, 100));
 
-      {/* Single-track dual slider */}
-      <div className="relative h-5 flex items-center">
-        {/* Track background */}
-        <div className="absolute inset-x-0 h-1 rounded-full" style={{ backgroundColor: 'var(--color-border)' }} />
-        {/* Active fill */}
-        <div
-          className="absolute h-1 rounded-full pointer-events-none"
-          style={{
-            left: `${pctMin}%`,
-            right: `${100 - pctMax}%`,
-            backgroundColor: 'var(--color-brand)',
-          }}
-        />
-        {/* Min thumb */}
-        <input
-          type="range"
-          min={min} max={max}
-          value={valueMin}
-          onChange={e => onChangeMin(clampMin(+e.target.value))}
-          className="dual-range-thumb"
-          style={{ zIndex: valueMin >= valueMax - 10 ? 5 : 3 }}
-        />
-        {/* Max thumb */}
-        <input
-          type="range"
-          min={min} max={max}
-          value={valueMax}
-          onChange={e => onChangeMax(clampMax(+e.target.value))}
-          className="dual-range-thumb"
-          style={{ zIndex: 4 }}
-        />
-      </div>
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={draft}
+        onChange={e => handleChange(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={e => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+        className={`w-full text-center px-2 py-1.5 border rounded-xl text-sm font-medium focus:outline-none transition-all duration-200 ${suffix ? 'pr-6' : ''}`}
+        style={numStyle}
+        onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)'; e.currentTarget.select(); }}
+        onBlurCapture={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
+      />
+      {suffix && (
+        <span
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium pointer-events-none"
+          style={{ color: 'var(--color-text-3)' }}
+        >
+          {suffix}
+        </span>
+      )}
+      {showScoreBar && (
+        // Full-size clip matching the input's own box exactly, so the input's real
+        // border-radius crops the thin bar's corners instead of a mismatched tighter one.
+        <div className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+          <div
+            className="absolute left-0 right-0 bottom-0 h-1"
+            style={{ backgroundColor: 'var(--color-border)' }}
+          >
+            <div
+              className={`h-full ${scoreColor(liveValue).bar} transition-all duration-200`}
+              style={{ width: `${liveValue}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
+// ─── Checkbox toggle button ───────────────────────────────────────────────────
+function CheckboxField({ label, checked, onToggle }: { label: string; checked: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-150"
+      style={checked ? {
+        borderColor: 'var(--color-brand)',
+        backgroundColor: 'var(--color-brand-light)',
+        color: 'var(--color-brand-hover)',
+      } : {
+        borderColor: 'var(--color-border)',
+        backgroundColor: 'var(--color-surface-alt)',
+        color: 'var(--color-text-2)',
+      }}
+    >
+      <span>{label}</span>
+      <span
+        className="w-4 h-4 rounded flex-shrink-0 border flex items-center justify-center transition-all"
+        style={{
+          borderColor: checked ? 'var(--color-brand)' : 'var(--color-border)',
+          backgroundColor: checked ? 'var(--color-brand)' : 'transparent',
+        }}
+      >
+        {checked && (
+          <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 8" fill="none">
+            <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
+    </button>
+  );
+}
+
 // ─── Filtros Modal ────────────────────────────────────────────────────────────
-interface FiltrosModalProps {
-  filterEstado: EstadoUGC | '';
+const DEFAULT_SCORE_MIN = 50;
+const DEFAULT_SEGUIDORES_MIN = 50000;
+
+export interface FiltrosState {
   scoreMin: number;
-  scoreMax: number;
-  filterEtiquetas: string[];
+  seguidoresMin: number;
+  trabajoNGR: boolean;
+  etiquetas: string[];
+}
+
+interface FiltrosModalProps extends FiltrosState {
   availableEtiquetas: string[];
-  onApply: (estado: EstadoUGC | '', min: number, max: number, etiquetas: string[]) => void;
+  onApply: (filtros: FiltrosState) => void;
   onClose: () => void;
 }
 
-function FiltrosModal({ filterEstado, scoreMin, scoreMax, filterEtiquetas, availableEtiquetas, onApply, onClose }: FiltrosModalProps) {
-  const [localEstado, setLocalEstado] = useState<EstadoUGC | ''>(filterEstado);
-  const [localMin, setLocalMin] = useState(scoreMin);
-  const [localMax, setLocalMax] = useState(scoreMax);
+function FiltrosModal({ scoreMin, seguidoresMin, trabajoNGR, etiquetas: filterEtiquetas, availableEtiquetas, onApply, onClose }: FiltrosModalProps) {
+  const [localMin, setLocalMin] = useState(scoreMin || DEFAULT_SCORE_MIN);
+  const [localSeguidoresMin, setLocalSeguidoresMin] = useState(seguidoresMin || DEFAULT_SEGUIDORES_MIN);
+  const [localTrabajoNGR, setLocalTrabajoNGR] = useState(trabajoNGR);
   const [localEtiquetas, setLocalEtiquetas] = useState<string[]>(filterEtiquetas);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [freshEtiquetas, setFreshEtiquetas] = useState<string[]>(availableEtiquetas);
@@ -290,17 +265,17 @@ function FiltrosModal({ filterEstado, scoreMin, scoreMax, filterEtiquetas, avail
       .catch(() => {});
   }, []);
 
-  const hasChanges = localEstado !== '' || localMin > 0 || localMax < 100 || localEtiquetas.length > 0;
+  const hasChanges = localMin > 0 || localSeguidoresMin > 0 || localTrabajoNGR || localEtiquetas.length > 0;
 
   function handleApply() {
-    onApply(localEstado, localMin, localMax, localEtiquetas);
+    onApply({ scoreMin: localMin, seguidoresMin: localSeguidoresMin, trabajoNGR: localTrabajoNGR, etiquetas: localEtiquetas });
     onClose();
   }
 
   function handleReset() {
-    setLocalEstado('');
     setLocalMin(0);
-    setLocalMax(100);
+    setLocalSeguidoresMin(0);
+    setLocalTrabajoNGR(false);
     setLocalEtiquetas([]);
   }
 
@@ -319,45 +294,26 @@ function FiltrosModal({ filterEstado, scoreMin, scoreMax, filterEtiquetas, avail
     >
       <div className="px-6 py-5 flex flex-col gap-5">
 
-        {/* Estado */}
-        <Field label="Estado">
-          <div className="grid grid-cols-3 gap-2">
-            {ESTADOS.map(e => {
-              const cfg = ESTADO_UGC_CONFIG[e];
-              const isSelected = localEstado === e;
-              return (
-                <button
-                  key={e}
-                  type="button"
-                  onClick={() => setLocalEstado(isSelected ? '' : e)}
-                  className="px-2 py-1.5 rounded-xl text-xs font-semibold border transition-all duration-150"
-                  style={isSelected ? {
-                    borderColor: 'var(--color-brand)',
-                    backgroundColor: 'var(--color-brand-light)',
-                    color: 'var(--color-brand-hover)',
-                    boxShadow: '0 0 0 1px var(--color-brand)',
-                  } : {
-                    borderColor: 'var(--color-border)',
-                    backgroundColor: 'var(--color-surface-alt)',
-                    color: 'var(--color-text-2)',
-                  }}
-                >
-                  {e}
-                </button>
-              );
-            })}
+        {/* Score mínimo + Mínimo de seguidores */}
+        <div className="flex items-start gap-4">
+          <div className="flex-1">
+            <Field label="Score mínimo">
+              <MinNumberInput value={localMin} onChange={setLocalMin} max={100} suffix="%" showScoreBar />
+            </Field>
           </div>
-        </Field>
+          <div className="flex-1">
+            <Field label="Mínimo de seguidores">
+              <MinNumberInput value={localSeguidoresMin} onChange={setLocalSeguidoresMin} />
+            </Field>
+          </div>
+        </div>
 
-        {/* Score range */}
-        <Field label="Rango de Score">
-          <DualRangeSlider
-            valueMin={localMin}
-            valueMax={localMax}
-            onChangeMin={v => setLocalMin(v)}
-            onChangeMax={v => setLocalMax(v)}
-          />
-        </Field>
+        {/* Ya trabajó con NGR */}
+        <CheckboxField
+          label="Ya trabajó con NGR"
+          checked={localTrabajoNGR}
+          onToggle={() => setLocalTrabajoNGR(v => !v)}
+        />
 
         {/* Etiquetas — multi-select dropdown */}
         <Field label="Etiquetas">
@@ -688,19 +644,38 @@ function ScoreBar({ score }: { score: number }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDeleteUGC, onGoToChat, onAsignar }: Props) {
-  const [search, setSearch] = useState('');
-  const [filterEstado, setFilterEstado] = useState<EstadoUGC | ''>('');
-  const [scoreMin, setScoreMin] = useState(0);
-  const [scoreMax, setScoreMax] = useState(100);
-  const [filterEtiquetas, setFilterEtiquetas] = useState<string[]>([]);
-  const [sortKey, setSortKey] = useState<SortKey>('score');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
-  const [selectedUGC, setSelectedUGC] = useState<UGC | null>(null);
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const search = searchParams.get('q') ?? '';
+  const scoreMin = Number(searchParams.get('scoreMin') ?? 0);
+  const seguidoresMin = Number(searchParams.get('seguidoresMin') ?? 0);
+  const filterTrabajoNGR = searchParams.get('trabajoNGR') === '1';
+  const etiquetasParam = searchParams.get('etiquetas');
+  const filterEtiquetas = useMemo(() => etiquetasParam ? etiquetasParam.split(',').filter(Boolean) : [], [etiquetasParam]);
+  const sortKey = (searchParams.get('sort') as SortKey | null) ?? 'score';
+  const sortDir = (searchParams.get('dir') as SortDir | null) ?? 'desc';
+
+  const selectedUGC = id ? ugcs.find(u => u.id === id) ?? null : null;
+
   const [showFiltrosModal, setShowFiltrosModal] = useState(false);
   const [showNuevoCreadorModal, setShowNuevoCreadorModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  const hasActiveFilters = filterEstado !== '' || scoreMin > 0 || scoreMax < 100 || filterEtiquetas.length > 0;
+  /** Aplica un patch de query params; `null`/'' borra la clave. `replace` evita ensuciar el historial (ideal para texto libre). */
+  function updateParams(patch: Record<string, string | null>, opts?: { replace?: boolean }) {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      Object.entries(patch).forEach(([k, v]) => {
+        if (v === null || v === '') next.delete(k);
+        else next.set(k, v);
+      });
+      return next;
+    }, opts);
+  }
+
+  const hasActiveFilters = scoreMin > 0 || seguidoresMin > 0 || filterTrabajoNGR || filterEtiquetas.length > 0;
 
   const [serverEtiquetas, setServerEtiquetas] = useState<string[]>([]);
   useEffect(() => {
@@ -719,10 +694,11 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
   const filtered = useMemo(() => {
     let list = ugcs.filter(u => {
       const matchSearch = u.nombre.toLowerCase().includes(search.toLowerCase());
-      const matchEstado = !filterEstado || u.estado === filterEstado;
-      const matchScore = u.score >= scoreMin && u.score <= scoreMax;
+      const matchScore = u.score >= scoreMin;
+      const matchSeguidores = parseFollowersNum(u) >= seguidoresMin;
+      const matchTrabajoNGR = !filterTrabajoNGR || haTrabajadoConNGR(u, campanas);
       const matchEtiqueta = filterEtiquetas.length === 0 || filterEtiquetas.some(e => u.etiquetas?.includes(e));
-      return matchSearch && matchEstado && matchScore && matchEtiqueta;
+      return matchSearch && matchScore && matchSeguidores && matchTrabajoNGR && matchEtiqueta;
     });
 
     list = [...list].sort((a, b) => {
@@ -735,11 +711,11 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
     });
 
     return list;
-  }, [ugcs, search, filterEstado, scoreMin, scoreMax, filterEtiquetas, sortKey, sortDir]);
+  }, [ugcs, campanas, search, scoreMin, seguidoresMin, filterTrabajoNGR, filterEtiquetas, sortKey, sortDir]);
 
   function handleSort(key: SortKey) {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('desc'); }
+    if (sortKey === key) updateParams({ sort: key, dir: sortDir === 'asc' ? 'desc' : 'asc' });
+    else updateParams({ sort: key, dir: 'desc' });
   }
 
   function SortIcon({ col }: { col: SortKey }) {
@@ -751,7 +727,6 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
     const campana = campanas.find(c => c.id === campanaId);
     const updated = { ...ugc, campanasignada: campana?.nombre || null };
     onUpdateUGC(updated);
-    setSelectedUGC(updated);
     onAsignar?.(ugc, campanaId);
   }
 
@@ -768,7 +743,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--color-text-3)' }} />
           <input
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => updateParams({ q: e.target.value }, { replace: true })}
             placeholder="Buscar creador..."
             className="w-full pl-9 pr-4 py-2.5 border rounded-xl text-sm transition-all duration-200 focus:outline-none"
             style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
@@ -819,20 +794,29 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
       {hasActiveFilters && (
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>Filtros activos:</span>
-          {filterEstado && (
+          {scoreMin > 0 && (
             <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border"
               style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)', color: 'var(--color-brand-hover)' }}>
-              {filterEstado}
-              <button onClick={() => setFilterEstado('')} className="ml-0.5 hover:opacity-70">
+              Score ≥ {scoreMin}
+              <button onClick={() => updateParams({ scoreMin: null })} className="ml-0.5 hover:opacity-70">
                 <X className="w-3 h-3" />
               </button>
             </span>
           )}
-          {(scoreMin > 0 || scoreMax < 100) && (
+          {seguidoresMin > 0 && (
             <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border"
               style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)', color: 'var(--color-brand-hover)' }}>
-              Score {scoreMin}–{scoreMax}
-              <button onClick={() => { setScoreMin(0); setScoreMax(100); }} className="ml-0.5 hover:opacity-70">
+              Seguidores ≥ {seguidoresMin.toLocaleString('es-AR')}
+              <button onClick={() => updateParams({ seguidoresMin: null })} className="ml-0.5 hover:opacity-70">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          )}
+          {filterTrabajoNGR && (
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border"
+              style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)', color: 'var(--color-brand-hover)' }}>
+              Ya trabajó con NGR
+              <button onClick={() => updateParams({ trabajoNGR: null })} className="ml-0.5 hover:opacity-70">
                 <X className="w-3 h-3" />
               </button>
             </span>
@@ -841,7 +825,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
             <span key={tag} className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border"
               style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)', color: 'var(--color-brand-hover)' }}>
               #{tag}
-              <button onClick={() => setFilterEtiquetas(prev => prev.filter(t => t !== tag))} className="ml-0.5 hover:opacity-70">
+              <button onClick={() => updateParams({ etiquetas: filterEtiquetas.filter(t => t !== tag).join(',') || null })} className="ml-0.5 hover:opacity-70">
                 <X className="w-3 h-3" />
               </button>
             </span>
@@ -893,7 +877,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
                         <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>No se encontraron creadores con estos filtros</p>
                       </div>
                       <button
-                        onClick={() => { setSearch(''); setFilterEstado(''); setScoreMin(0); setScoreMax(100); setFilterEtiquetas([]); }}
+                        onClick={() => updateParams({ q: null, scoreMin: null, seguidoresMin: null, trabajoNGR: null, etiquetas: null })}
                         className="text-xs font-semibold underline"
                         style={{ color: 'var(--color-brand)' }}
                       >
@@ -908,7 +892,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
                 return (
                   <tr
                     key={u.id}
-                    onClick={() => setSelectedUGC(u)}
+                    onClick={() => navigate(`/ugcs/${u.id}`)}
                     className="cursor-pointer group transition-colors duration-150"
                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
@@ -953,7 +937,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
                     <td className="py-3.5 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }} onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => setSelectedUGC(u)}
+                          onClick={() => navigate(`/ugcs/${u.id}`)}
                           title="Ver perfil"
                           className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150"
                           style={{ color: 'var(--color-text-3)' }}
@@ -963,7 +947,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
                           <Eye className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => setSelectedUGC(u)}
+                          onClick={() => navigate(`/ugcs/${u.id}`)}
                           title="Ver conversación"
                           className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150"
                           style={{ color: 'var(--color-text-3)' }}
@@ -1011,16 +995,18 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
       {/* ── Modals ─────────────────────────────────────────────────────── */}
       {showFiltrosModal && (
         <FiltrosModal
-          filterEstado={filterEstado}
           scoreMin={scoreMin}
-          scoreMax={scoreMax}
-          filterEtiquetas={filterEtiquetas}
+          seguidoresMin={seguidoresMin}
+          trabajoNGR={filterTrabajoNGR}
+          etiquetas={filterEtiquetas}
           availableEtiquetas={allEtiquetas}
-          onApply={(estado, min, max, etiquetas) => {
-            setFilterEstado(estado);
-            setScoreMin(min);
-            setScoreMax(max);
-            setFilterEtiquetas(etiquetas);
+          onApply={filtros => {
+            updateParams({
+              scoreMin: filtros.scoreMin > 0 ? String(filtros.scoreMin) : null,
+              seguidoresMin: filtros.seguidoresMin > 0 ? String(filtros.seguidoresMin) : null,
+              trabajoNGR: filtros.trabajoNGR ? '1' : null,
+              etiquetas: filtros.etiquetas.length ? filtros.etiquetas.join(',') : null,
+            });
           }}
           onClose={() => setShowFiltrosModal(false)}
         />
@@ -1038,10 +1024,10 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
         <UGCDrawer
           ugc={selectedUGC}
           campanas={campanas}
-          onClose={() => setSelectedUGC(null)}
+          onClose={() => navigate('/ugcs')}
           onAsignar={handleAsignar}
           onUpdateUGC={onUpdateUGC}
-          onGoToChat={ugc => { setSelectedUGC(null); onGoToChat?.(ugc); }}
+          onGoToChat={ugc => onGoToChat?.(ugc)}
         />
       )}
 

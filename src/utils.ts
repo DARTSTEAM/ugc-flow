@@ -1,4 +1,4 @@
-import type { Canal, EstadoUGC, EstadoCampana, EstadoEnCampana, UGC } from './data';
+import type { Canal, EstadoUGC, EstadoCampana, EstadoEnCampana, UGC, Campana } from './data';
 
 // ─── Score helpers ──────────────────────────────────────────────────────────
 
@@ -91,4 +91,27 @@ export function formatLastScraped(isoString: string | undefined): string {
   if (diffDays < 7) return `Hace ${diffDays} días`;
   if (diffDays < 30) return `Hace ${Math.floor(diffDays / 7)} semana${Math.floor(diffDays / 7) > 1 ? 's' : ''}`;
   return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// ─── Followers helpers ──────────────────────────────────────────────────────
+
+/** Resolves a UGC's follower count as a number, preferring the exact scraped Instagram value. */
+export function parseFollowersNum(ugc: UGC): number {
+  const exact = ugc.evaluacionPerfil?.seguidores;
+  if (exact) return exact;
+  const s = ugc.seguidores;
+  if (!s) return 0;
+  const lower = s.toLowerCase().replace(',', '.');
+  if (lower.endsWith('k')) return parseFloat(lower) * 1000;
+  if (lower.endsWith('m')) return parseFloat(lower) * 1000000;
+  return parseInt(lower, 10) || 0;
+}
+
+// ─── Campaign history helpers ───────────────────────────────────────────────
+
+/** True if the creator was Activo in at least one Cerrada campaign — i.e., already worked with NGR. */
+export function haTrabajadoConNGR(ugc: UGC, campanas: Campana[]): boolean {
+  return campanas.some(c =>
+    c.estado === 'Cerrada' && c.ugcs.some(cu => cu.ugcId === ugc.id && cu.estado === 'Activo')
+  );
 }

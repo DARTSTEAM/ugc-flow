@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { UGC, Campana } from '../data';
 import { Star, Users, TrendingUp, RefreshCw, Lightbulb, Trophy } from 'lucide-react';
-import { scoreColor, getInitials, avatarColor, ESTADO_UGC_CONFIG } from '../utils';
+import { scoreColor, getInitials, avatarColor, ESTADO_UGC_CONFIG, parseFollowersNum } from '../utils';
 
 interface Props {
   ugcs: UGC[];
@@ -9,17 +10,6 @@ interface Props {
 }
 
 type SectionId = 'top' | 'sin-evaluar' | 'reengagement';
-
-function parseFollowersNum(ugc: UGC): number {
-  const exact = ugc.evaluacionPerfil?.seguidores;
-  if (exact) return exact;
-  const s = ugc.seguidores;
-  if (!s) return 0;
-  const lower = s.toLowerCase().replace(',', '.');
-  if (lower.endsWith('k')) return parseFloat(lower) * 1000;
-  if (lower.endsWith('m')) return parseFloat(lower) * 1000000;
-  return parseInt(lower, 10) || 0;
-}
 
 function formatFollowers(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
@@ -69,8 +59,20 @@ function getRazonReengagement(ugc: UGC, campanas: Campana[]): string {
 }
 
 export default function RecomendacionesTab({ ugcs, campanas }: Props) {
-  const [section, setSection] = useState<SectionId>('top');
-  const [filterEtiqueta, setFilterEtiqueta] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const section = (searchParams.get('section') as SectionId | null) ?? 'top';
+  const filterEtiqueta = searchParams.get('etiqueta') ?? '';
+
+  function updateParams(patch: Record<string, string | null>) {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      Object.entries(patch).forEach(([k, v]) => {
+        if (v === null || v === '') next.delete(k);
+        else next.set(k, v);
+      });
+      return next;
+    });
+  }
 
   const allEtiquetas = useMemo(() => {
     const set = new Set<string>();
@@ -162,7 +164,7 @@ export default function RecomendacionesTab({ ugcs, campanas }: Props) {
           return (
             <button
               key={sec.id}
-              onClick={() => setSection(sec.id)}
+              onClick={() => updateParams({ section: sec.id === 'top' ? null : sec.id })}
               className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all duration-150 active:scale-[0.97]"
               style={isActive ? {
                 backgroundColor: 'var(--color-brand)',
@@ -198,7 +200,7 @@ export default function RecomendacionesTab({ ugcs, campanas }: Props) {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-semibold" style={{ color: 'var(--color-text-3)' }}>Etiqueta:</span>
           <button
-            onClick={() => setFilterEtiqueta('')}
+            onClick={() => updateParams({ etiqueta: null })}
             className="px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all duration-150"
             style={!filterEtiqueta ? {
               borderColor: 'var(--color-brand)',
@@ -215,7 +217,7 @@ export default function RecomendacionesTab({ ugcs, campanas }: Props) {
           {allEtiquetas.map(e => (
             <button
               key={e}
-              onClick={() => setFilterEtiqueta(filterEtiqueta === e ? '' : e)}
+              onClick={() => updateParams({ etiqueta: filterEtiqueta === e ? null : e })}
               className="px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all duration-150"
               style={filterEtiqueta === e ? {
                 borderColor: 'var(--color-brand)',

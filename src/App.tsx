@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Users, Megaphone, Bell, ChevronRight, Sun, Moon, MessageSquare, ScanSearch, Star, BrainCircuit } from 'lucide-react';
-import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign, assignCreatorToCampaign, deleteCampaign } from './api';
-import type { UGC, Campana, EstadoEnCampana } from './data';
+import { Routes, Route, Navigate, NavLink, useNavigate, useLocation, useMatch, useParams } from 'react-router-dom';
+import { Users, Megaphone, ChevronRight, MessageSquare, ScanSearch, Star, BrainCircuit, Menu, X } from 'lucide-react';
+import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign, assignCreatorToCampaign, deleteCampaign, updateCreatorCampaignStatus, fetchProfile } from './api';
+import type { UGC, Campana, EstadoEnCampana, UserProfile } from './data';
 import UGCsTab from './components/UGCsTab';
 import ChatsTab from './components/ChatsTab';
 import CampanasTab from './components/CampanasTab';
@@ -10,18 +11,50 @@ import NuevaCampanaModal from './components/NuevaCampanaModal';
 import ProspeccionTab from './components/ProspeccionTab';
 import RecomendacionesTab from './components/RecomendacionesTab';
 import TestAgentTab from './components/TestAgentTab';
+import UserProfileMenu from './components/UserProfileMenu';
+import ProfileView from './components/ProfileView';
 import logoNgr from './assets/Logo-ngr.png';
+
+export const FALLBACK_PROFILE: UserProfile = { id: 'user-001', nombre: 'Bautista', area: 'Marketing', email: null, fotoUrl: null };
 
 type TabId = 'ugcs' | 'campanas' | 'chats' | 'prospeccion' | 'recomendaciones' | 'testagent';
 
 const NAV_ITEMS = [
-  { id: 'ugcs' as TabId,             label: 'UGCs Activos',    icon: Users },
-  { id: 'prospeccion' as TabId,      label: 'Prospección',     icon: ScanSearch },
-  { id: 'campanas' as TabId,         label: 'Campañas',        icon: Megaphone },
-  { id: 'chats' as TabId,            label: 'Chats',           icon: MessageSquare },
-  { id: 'recomendaciones' as TabId,  label: 'Recomendaciones', icon: Star },
-  { id: 'testagent' as TabId,        label: 'Test Agent',      icon: BrainCircuit },
+  { id: 'ugcs' as TabId,             path: '/ugcs',          label: 'UGCs Activos',    icon: Users },
+  { id: 'prospeccion' as TabId,      path: '/prospeccion',   label: 'Prospección',     icon: ScanSearch },
+  { id: 'campanas' as TabId,         path: '/campanas',      label: 'Campañas',        icon: Megaphone },
+  { id: 'chats' as TabId,            path: '/chats',         label: 'Chats',           icon: MessageSquare },
+  { id: 'recomendaciones' as TabId,  path: '/recomendaciones', label: 'Recomendaciones', icon: Star },
+  { id: 'testagent' as TabId,        path: '/testagent',     label: 'Test Agent',      icon: BrainCircuit },
 ];
+
+/** Envuelve CampanaDetail: resuelve la campaña por :id y traduce back/delete a navegación real. */
+function CampanaDetailRoute({ campanas, ugcs, onTogglePause, onLanzar, onDeleteCampana, onUpdateEstadoCreador, onGoToChat }: {
+  campanas: Campana[];
+  ugcs: UGC[];
+  onTogglePause: (c: Campana) => void;
+  onLanzar: (c: Campana) => void;
+  onDeleteCampana: (c: Campana) => void;
+  onUpdateEstadoCreador: (campanaId: string, creatorId: string, estado: EstadoEnCampana) => void;
+  onGoToChat: (ugc: UGC) => void;
+}) {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const campana = campanas.find(c => c.id === id);
+  if (!campana) return <Navigate to="/campanas" replace />;
+  return (
+    <CampanaDetail
+      campana={campana}
+      ugcs={ugcs}
+      onBack={() => navigate('/campanas')}
+      onTogglePause={onTogglePause}
+      onLanzar={onLanzar}
+      onDeleteCampana={onDeleteCampana}
+      onUpdateEstadoCreador={onUpdateEstadoCreador}
+      onGoToChat={onGoToChat}
+    />
+  );
+}
 
 function useDarkMode() {
   const [dark, setDark] = useState<boolean>(() => {
@@ -44,15 +77,33 @@ function useDarkMode() {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabId>('ugcs');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const campanaDetailMatch = useMatch('/campanas/:id');
+
   const [ugcs, setUGCs] = useState<UGC[]>([]);
   const [campanas, setCampanas] = useState<Campana[]>([]);
-  const [selectedCampana, setSelectedCampana] = useState<Campana | null>(null);
   const [showNuevaCampana, setShowNuevaCampana] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dark, setDark] = useDarkMode();
-  const [chatTargetId, setChatTargetId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile>(FALLBACK_PROFILE);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const isPerfil = location.pathname === '/perfil';
+  const section = location.pathname.split('/')[1] || 'ugcs';
+  const selectedCampana = campanaDetailMatch ? campanas.find(c => c.id === campanaDetailMatch.params.id) ?? null : null;
+
+  // Close the mobile drawer automatically on every navigation
+  useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
+
+  function goToChat(ugc: UGC) {
+    navigate(`/chats/${ugc.id}`);
+  }
+
+  useEffect(() => {
+    fetchProfile().then(setProfile).catch(() => {});
+  }, []);
 
   // ── Load data from API on mount ──────────────────────────────────
   useEffect(() => {
@@ -134,7 +185,7 @@ export default function App() {
     try {
       await deleteCampaign(campana.id);
       setCampanas(prev => prev.filter(c => c.id !== campana.id));
-      setSelectedCampana(null);
+      navigate('/campanas');
     } catch (err) {
       console.error('Failed to delete campaign:', err);
     }
@@ -144,9 +195,7 @@ export default function App() {
     const newEstado = campana.estado === 'Pausada' ? 'Activa' : 'Pausada';
     try {
       await updateCampaignStatus(campana.id, newEstado);
-      const updated = { ...campana, estado: newEstado } as Campana;
-      setCampanas(prev => prev.map(c => c.id === campana.id ? updated : c));
-      if (selectedCampana?.id === campana.id) setSelectedCampana(updated);
+      setCampanas(prev => prev.map(c => c.id === campana.id ? { ...c, estado: newEstado } as Campana : c));
     } catch (err) {
       console.error('Failed to toggle pause:', err);
     }
@@ -155,22 +204,22 @@ export default function App() {
   async function handleLanzar(campana: Campana) {
     try {
       await updateCampaignStatus(campana.id, 'Activa');
-      const updated = { ...campana, estado: 'Activa' } as Campana;
-      setCampanas(prev => prev.map(c => c.id === campana.id ? updated : c));
-      if (selectedCampana?.id === campana.id) setSelectedCampana(updated);
+      setCampanas(prev => prev.map(c => c.id === campana.id ? { ...c, estado: 'Activa' } as Campana : c));
     } catch (err) {
       console.error('Failed to launch campaign:', err);
     }
   }
 
-  function handleSelectCampana(c: Campana) {
-    setSelectedCampana(c);
-    setActiveTab('campanas');
-  }
-
-  function handleGoToChat(ugc: UGC) {
-    setChatTargetId(ugc.id);
-    setActiveTab('chats');
+  async function handleUpdateEstadoCreador(campanaId: string, creatorId: string, estado: EstadoEnCampana) {
+    setCampanas(prev => prev.map(c => {
+      if (c.id !== campanaId) return c;
+      return { ...c, ugcs: c.ugcs.map(u => u.ugcId === creatorId ? { ...u, estado } : u) };
+    }));
+    try {
+      await updateCreatorCampaignStatus(campanaId, creatorId, estado);
+    } catch (err) {
+      console.error('Failed to update creator status in campaign:', err);
+    }
   }
 
   async function handleCrearCampana(nueva: Campana) {
@@ -178,8 +227,7 @@ export default function App() {
       await createCampaign(nueva);
       setCampanas(prev => [...prev, nueva]);
       setShowNuevaCampana(false);
-      setSelectedCampana(nueva);
-      setActiveTab('campanas');
+      navigate(`/campanas/${nueva.id}`);
     } catch (err) {
       console.error('Failed to create campaign:', err);
     }
@@ -191,9 +239,9 @@ export default function App() {
   // ── Loading state ────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="h-screen w-screen flex overflow-hidden" style={{ backgroundColor: 'var(--color-bg-app)' }}>
-        {/* Sidebar skeleton */}
-        <aside className="w-56 flex-shrink-0 flex flex-col border-r animate-pulse" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}>
+      <div className="h-dvh w-screen flex overflow-hidden" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+        {/* Sidebar skeleton — hidden on mobile to avoid flashing the broken fixed-width layout while loading */}
+        <aside className="hidden lg:flex w-56 flex-shrink-0 flex-col border-r animate-pulse" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}>
           <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <div className="flex items-center gap-2.5">
               <div className="w-10 h-10 rounded-xl" style={{ backgroundColor: 'var(--color-border)' }} />
@@ -280,7 +328,7 @@ export default function App() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+      <div className="min-h-dvh flex items-center justify-center p-4" style={{ backgroundColor: 'var(--color-bg-app)' }}>
         <div className="rounded-2xl p-8 max-w-md text-center border" style={{ backgroundColor: 'var(--color-surface)', borderColor: '#fecdd3' }}>
           <p className="text-sm font-semibold text-rose-600 mb-2">Error al conectar</p>
           <p className="text-xs mb-4" style={{ color: 'var(--color-text-2)' }}>{error}</p>
@@ -297,15 +345,24 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+    <div className="h-dvh w-screen flex overflow-hidden" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+
+      {/* ── Mobile sidebar overlay ─────────────────────────────────── */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-40 lg:hidden overlay-enter"
+          style={{ backgroundColor: 'rgba(9,10,15,0.45)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
 
       {/* ── Sidebar ─────────────────────────────────────────────────── */}
       <aside
-        className="w-56 flex-shrink-0 flex flex-col border-r"
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 lg:w-56 flex-shrink-0 flex flex-col border-r transition-transform duration-300 ease-out lg:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
         style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}
       >
         {/* Logo */}
-        <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+        <div className="px-5 py-5 border-b flex items-center justify-between" style={{ borderColor: 'var(--color-border-subtle)' }}>
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl border flex items-center justify-center overflow-hidden p-1.5 shadow-sm"
               style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
@@ -316,17 +373,25 @@ export default function App() {
               <p className="text-[10px] font-medium mt-0.5" style={{ color: 'var(--color-text-3)' }}>by NGR Digital</p>
             </div>
           </div>
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            aria-label="Cerrar menú"
+            className="lg:hidden w-11 h-11 -mr-2.5 flex items-center justify-center rounded-xl flex-shrink-0"
+            style={{ color: 'var(--color-text-3)' }}
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-4 px-3">
+        <nav className="flex-1 py-4 px-3 overflow-y-auto">
           {NAV_ITEMS.map(item => {
             const Icon = item.icon;
-            const isActive = activeTab === item.id;
+            const isActive = !isPerfil && (location.pathname === item.path || location.pathname.startsWith(item.path + '/'));
             return (
-              <button
+              <NavLink
                 key={item.id}
-                onClick={() => { setActiveTab(item.id); setSelectedCampana(null); }}
+                to={item.path}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-0.5 text-sm font-semibold transition-all duration-200 active:scale-[0.98]"
                 style={isActive ? {
                   backgroundColor: 'var(--color-brand)',
@@ -356,7 +421,7 @@ export default function App() {
                   {item.id === 'recomendaciones' && ugcs.filter(u => u.score > 0 && u.estado !== 'Descartado').length}
                   {item.id === 'testagent' && 'AI'}
                 </span>
-              </button>
+              </NavLink>
             );
           })}
 
@@ -382,19 +447,7 @@ export default function App() {
 
         {/* User at bottom */}
         <div className="px-3 py-4 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
-          <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl cursor-pointer transition-colors duration-200 group"
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}>
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, var(--color-brand) 0%, var(--color-brand-muted) 100%)' }}>
-              SA
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text-1)' }}>Santiago</p>
-              <p className="text-[10px] truncate" style={{ color: 'var(--color-text-3)' }}>Marketing</p>
-            </div>
-            <ChevronRight className="w-3 h-3 transition-colors duration-200" style={{ color: 'var(--color-text-3)' }} />
-          </div>
+          <UserProfileMenu dark={dark} setDark={setDark} profile={profile} onOpenProfile={() => navigate('/perfil')} active={isPerfil} />
         </div>
       </aside>
 
@@ -403,14 +456,40 @@ export default function App() {
 
         {/* Top bar */}
         <header
-          className="border-b px-6 py-4 flex items-center justify-between flex-shrink-0"
+          className="border-b px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 flex-shrink-0"
           style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}
         >
-          <div>
-            {selectedCampana ? (
+          <div className="flex items-center gap-1 min-w-0">
+            {/* Hamburger: opens the sidebar drawer below the lg breakpoint */}
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              aria-label="Abrir menú"
+              className="lg:hidden w-11 h-11 -ml-2.5 flex items-center justify-center rounded-xl flex-shrink-0 transition-all duration-200"
+              style={{ color: 'var(--color-text-3)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="min-w-0">
+            {isPerfil ? (
               <div className="flex items-center gap-1.5 text-sm">
                 <button
-                  onClick={() => setSelectedCampana(null)}
+                  onClick={() => navigate(-1)}
+                  className="font-medium transition-colors duration-200"
+                  style={{ color: 'var(--color-text-3)' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'}
+                >
+                  Volver
+                </button>
+                <ChevronRight className="w-3.5 h-3.5" style={{ color: 'var(--color-text-3)' }} />
+                <span className="font-semibold" style={{ color: 'var(--color-text-1)' }}>Mi Perfil</span>
+              </div>
+            ) : selectedCampana ? (
+              <div className="flex items-center gap-1.5 text-sm">
+                <button
+                  onClick={() => navigate('/campanas')}
                   className="font-medium transition-colors duration-200"
                   style={{ color: 'var(--color-text-3)' }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-brand)'}
@@ -426,99 +505,94 @@ export default function App() {
             ) : (
               <div>
                 <h1 className="text-base font-black" style={{ color: 'var(--color-text-1)' }}>
-                  {activeTab === 'ugcs' && 'UGCs Activos'}
-                  {activeTab === 'prospeccion' && 'Prospección de UGCs'}
-                  {activeTab === 'campanas' && 'Gestión de Campañas'}
-                  {activeTab === 'chats' && 'Centro de Mensajería'}
-                  {activeTab === 'recomendaciones' && 'Recomendaciones'}
+                  {section === 'ugcs' && 'UGCs Activos'}
+                  {section === 'prospeccion' && 'Prospección de UGCs'}
+                  {section === 'campanas' && 'Gestión de Campañas'}
+                  {section === 'chats' && 'Centro de Mensajería'}
+                  {section === 'recomendaciones' && 'Recomendaciones'}
                 </h1>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>
-                  {activeTab === 'ugcs' && 'Gestioná, calificá y asigná creadores a tus campañas'}
-                  {activeTab === 'prospeccion' && 'Buscá y calificá nuevos creadores UGC para tus campañas'}
-                  {activeTab === 'campanas' && 'Creá, pausá y monitoreá el progreso de tus campañas activas'}
-                  {activeTab === 'chats' && 'Respondé mensajes y coordiná con tus creadores en un solo lugar'}
-                  {activeTab === 'recomendaciones' && 'Top creadores rankeados por score, listos para tus campañas'}
+                  {section === 'ugcs' && 'Gestioná, calificá y asigná creadores a tus campañas'}
+                  {section === 'prospeccion' && 'Buscá y calificá nuevos creadores UGC para tus campañas'}
+                  {section === 'campanas' && 'Creá, pausá y monitoreá el progreso de tus campañas activas'}
+                  {section === 'chats' && 'Respondé mensajes y coordiná con tus creadores en un solo lugar'}
+                  {section === 'recomendaciones' && 'Top creadores rankeados por score, listos para tus campañas'}
                 </p>
               </div>
             ) }
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {/* Dark mode toggle */}
-            <button
-              onClick={() => setDark(d => !d)}
-              className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
-              style={{ color: 'var(--color-text-3)' }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
-              title={dark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
-            >
-              {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-            {/* Notifications */}
-            <button
-              aria-label="Notificaciones"
-              title="Notificaciones"
-              className="relative w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
-              style={{ color: 'var(--color-text-3)' }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
-            >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--color-brand)' }} />
-            </button>
+          <div className="flex items-center gap-0.5 sm:gap-1.5 flex-shrink-0">
+            <UserProfileMenu
+              dark={dark}
+              setDark={setDark}
+              profile={profile}
+              onOpenProfile={() => navigate('/perfil')}
+              active={isPerfil}
+              variant="header"
+            />
           </div>
         </header>
 
         {/* Content */}
-        <main className={`flex-1 ${activeTab === 'chats' || activeTab === 'testagent' ? 'p-0 overflow-hidden' : 'p-6 overflow-auto'}`} style={{ backgroundColor: 'var(--color-bg-app)' }}>
-          {activeTab === 'ugcs' && (
-            <UGCsTab
-              ugcs={ugcs}
-              campanas={campanas}
-              onAddUGC={() => {}}
-              onUpdateUGC={handleUpdateUGC}
-              onDeleteUGC={handleDeleteUGC}
-              onGoToChat={handleGoToChat}
-              onAsignar={handleAsignarCampana}
-            />
-          )}
-          {activeTab === 'prospeccion' && (
-            <ProspeccionTab />
-          )}
-          {activeTab === 'chats' && (
-            <ChatsTab
-              ugcs={ugcs}
-              onUpdateUGC={handleUpdateUGC}
-              initialUgcId={chatTargetId}
-            />
-          )}
-          {activeTab === 'campanas' && !selectedCampana && (
-            <CampanasTab
-              campanas={campanas}
-              ugcs={ugcs}
-              onSelectCampana={handleSelectCampana}
-              onTogglePause={handleTogglePause}
-              onLanzar={handleLanzar}
-              onAddCampana={() => setShowNuevaCampana(true)}
-            />
-          )}
-          {activeTab === 'campanas' && selectedCampana && (
-            <CampanaDetail
-              campana={campanas.find(c => c.id === selectedCampana.id) || selectedCampana}
-              ugcs={ugcs}
-              onBack={() => setSelectedCampana(null)}
-              onTogglePause={handleTogglePause}
-              onLanzar={handleLanzar}
-              onDeleteCampana={handleDeleteCampana}
-            />
-          )}
-          {activeTab === 'recomendaciones' && (
-            <RecomendacionesTab ugcs={ugcs} campanas={campanas} />
-          )}
-          {activeTab === 'testagent' && (
-            <TestAgentTab />
-          )}
+        <main
+          className={`flex-1 ${section === 'chats' || section === 'testagent' ? 'p-0 overflow-hidden' : 'p-4 sm:p-6 overflow-auto'}`}
+          style={{ backgroundColor: 'var(--color-bg-app)' }}
+        >
+          <Routes>
+            <Route path="/" element={<Navigate to="/ugcs" replace />} />
+            <Route path="/ugcs" element={
+              <UGCsTab
+                ugcs={ugcs}
+                campanas={campanas}
+                onAddUGC={() => {}}
+                onUpdateUGC={handleUpdateUGC}
+                onDeleteUGC={handleDeleteUGC}
+                onGoToChat={goToChat}
+                onAsignar={handleAsignarCampana}
+              />
+            } />
+            <Route path="/ugcs/:id" element={
+              <UGCsTab
+                ugcs={ugcs}
+                campanas={campanas}
+                onAddUGC={() => {}}
+                onUpdateUGC={handleUpdateUGC}
+                onDeleteUGC={handleDeleteUGC}
+                onGoToChat={goToChat}
+                onAsignar={handleAsignarCampana}
+              />
+            } />
+            <Route path="/prospeccion" element={<ProspeccionTab />} />
+            <Route path="/campanas" element={
+              <CampanasTab
+                campanas={campanas}
+                ugcs={ugcs}
+                onSelectCampana={c => navigate(`/campanas/${c.id}`)}
+                onTogglePause={handleTogglePause}
+                onLanzar={handleLanzar}
+                onAddCampana={() => setShowNuevaCampana(true)}
+              />
+            } />
+            <Route path="/campanas/:id" element={
+              <CampanaDetailRoute
+                campanas={campanas}
+                ugcs={ugcs}
+                onTogglePause={handleTogglePause}
+                onLanzar={handleLanzar}
+                onDeleteCampana={handleDeleteCampana}
+                onUpdateEstadoCreador={handleUpdateEstadoCreador}
+                onGoToChat={goToChat}
+              />
+            } />
+            <Route path="/chats" element={<ChatsTab ugcs={ugcs} onUpdateUGC={handleUpdateUGC} />} />
+            <Route path="/chats/:ugcId" element={<ChatsTab ugcs={ugcs} onUpdateUGC={handleUpdateUGC} />} />
+            <Route path="/recomendaciones" element={<RecomendacionesTab ugcs={ugcs} campanas={campanas} />} />
+            <Route path="/testagent" element={<TestAgentTab />} />
+            <Route path="/perfil" element={<ProfileView onSaved={setProfile} />} />
+            <Route path="*" element={<Navigate to="/ugcs" replace />} />
+          </Routes>
         </main>
       </div>
 

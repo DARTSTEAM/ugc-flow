@@ -1,4 +1,4 @@
-import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana, SentimientoCampana, UserProfile } from './data';
+import type { UGC, Campana, EstadoEnCampana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana, SentimientoCampana, UserProfile } from './data';
 
 const BASE = '/api';
 
@@ -97,7 +97,6 @@ export async function createCampaign(campana: Campana): Promise<void> {
       descripcion: campana.descripcion,
       fechaInicio: campana.fechaInicio,
       fechaFin: campana.fechaFin,
-      objetivo: campana.objetivo,
       mensajeContacto: campana.mensajeContacto,
     }),
   });
@@ -119,6 +118,13 @@ export async function assignCreatorToCampaign(campaignId: string, creatorId: str
 
 export async function removeCreatorFromCampaign(campaignId: string, creatorId: string): Promise<void> {
   await json(`/campaigns/${campaignId}/creators/${creatorId}`, { method: 'DELETE' });
+}
+
+export async function updateCreatorCampaignStatus(campaignId: string, creatorId: string, estado: EstadoEnCampana): Promise<void> {
+  await json(`/campaigns/${campaignId}/creators/${creatorId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ estado }),
+  });
 }
 
 export async function sendCreatorMessage(creatorId: string, tipo: 'saliente' | 'entrante', texto: string, fecha?: string): Promise<void> {

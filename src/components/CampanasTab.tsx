@@ -40,16 +40,10 @@ function CampanaCard({ campana, cardBg, cardBorder, onSelect }: {
 }) {
   const [hovered, setHovered] = useState(false);
   const estadoCfg = ESTADO_CAMPANA_CONFIG[campana.estado];
-  const enviados    = campana.ugcs.filter(u => u.estado !== 'No aplica').length;
-  const respondidos = campana.ugcs.filter(u => ['Respondió', 'Calificado'].includes(u.estado)).length;
-  const calificados = campana.ugcs.filter(u => u.estado === 'Calificado').length;
-  const progreso    = Math.min(Math.round((enviados / campana.objetivo) * 100), 100);
-
-  const progressColor = campana.estado === 'Cerrada'
-    ? '#CBD5E1'
-    : campana.estado === 'Pausada'
-    ? '#FBBF24'
-    : 'var(--color-brand)';
+  const pendientes    = campana.ugcs.filter(u => u.estado === 'Pendiente').length;
+  const activos        = campana.ugcs.filter(u => u.estado === 'Activo').length;
+  const enNegociacion  = campana.ugcs.filter(u => u.estado === 'En Negociación').length;
+  const descartados    = campana.ugcs.filter(u => u.estado === 'Descartado').length;
 
   return (
     <div
@@ -88,26 +82,13 @@ function CampanaCard({ campana, cardBg, cardBorder, onSelect }: {
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] font-mono" style={{ color: '#6b7280' }}>{enviados}/{campana.objetivo} UGCs</span>
-          <span className="text-[10px] font-bold font-mono" style={{ color: '#374151' }}>{progreso}%</span>
-        </div>
-        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}>
-          <div
-            className="h-full rounded-full"
-            style={{ width: `${progreso}%`, backgroundColor: progressColor, transition: 'width 700ms' }}
-          />
-        </div>
-      </div>
-
       {/* Stats */}
-      <div className="flex gap-3">
+      <div className="flex gap-2">
         {[
-          { label: 'Enviados',    value: enviados },
-          { label: 'Respondidos', value: respondidos },
-          { label: 'Calificados', value: calificados },
+          { label: 'Pendientes',       value: pendientes },
+          { label: 'Activos',          value: activos },
+          { label: 'En Negociación',   value: enNegociacion },
+          { label: 'Descartados',      value: descartados },
         ].map(s => (
           <div key={s.label} className="flex-1 p-2 rounded-xl text-center" style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}>
             <p className="text-base font-black font-mono" style={{ color: '#111827' }}>{s.value}</p>
@@ -137,8 +118,8 @@ export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }:
   const hasMore = filtered.length > visibleCount;
 
   const totalActivas    = campanas.filter(c => c.estado === 'Activa' || c.estado === 'Pausada').length;
-  const totalEnviados   = campanas.flatMap(c => c.ugcs).filter(u => u.estado !== 'No aplica').length;
-  const totalCalificados = campanas.flatMap(c => c.ugcs).filter(u => u.estado === 'Calificado').length;
+  const totalCreadores  = campanas.flatMap(c => c.ugcs).length;
+  const totalActivosCreadores = campanas.flatMap(c => c.ugcs).filter(u => u.estado === 'Activo').length;
 
   function handleFilterChange(f: FilterCampana) {
     setFilter(f);
@@ -175,10 +156,10 @@ export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }:
       {/* ── Stats bar ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: 'Total campañas',        value: campanas.length,  color: 'var(--color-text-1)', sub: 'registradas' },
-          { label: 'Activas',               value: totalActivas,     color: '#10b981',             sub: 'en curso ahora' },
-          { label: 'Creadores contactados', value: totalEnviados,    color: 'var(--color-brand)',  sub: 'en total' },
-          { label: 'Calificados',           value: totalCalificados, color: '#3b82f6',             sub: 'listos para producir' },
+          { label: 'Total campañas',        value: campanas.length,          color: 'var(--color-text-1)', sub: 'registradas' },
+          { label: 'Activas',               value: totalActivas,             color: '#10b981',             sub: 'en curso ahora' },
+          { label: 'Creadores en campaña',  value: totalCreadores,           color: 'var(--color-brand)',  sub: 'en total' },
+          { label: 'Activos',               value: totalActivosCreadores,    color: '#3b82f6',             sub: 'trabajando ahora' },
         ].map(stat => (
           <div
             key={stat.label}

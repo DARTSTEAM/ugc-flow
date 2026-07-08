@@ -61,7 +61,7 @@ function getRazonSinEvaluar(ugc: UGC): string {
 function getRazonReengagement(ugc: UGC, campanas: Campana[]): string {
   const closed = campanas.filter(c =>
     c.estado === 'Cerrada' &&
-    c.ugcs.some(cu => cu.ugcId === ugc.id && cu.estado === 'Calificado')
+    c.ugcs.some(cu => cu.ugcId === ugc.id && cu.estado === 'Activo')
   );
   if (closed.length === 0) return 'Historial confirmado en campañas anteriores';
   const marcas = [...new Set(closed.map(c => c.marca || c.nombre.split(' - ')[0]))];
@@ -84,7 +84,7 @@ export default function RecomendacionesTab({ ugcs, campanas }: Props) {
     campanas.forEach(c => {
       if (c.estado === 'Cerrada') {
         c.ugcs.forEach(cu => {
-          if (cu.estado === 'Calificado') set.add(cu.ugcId);
+          if (cu.estado === 'Activo') set.add(cu.ugcId);
         });
       }
     });
@@ -281,7 +281,7 @@ export default function RecomendacionesTab({ ugcs, campanas }: Props) {
 
             const cerradasCalificadas = campanas.filter(c =>
               c.estado === 'Cerrada' &&
-              c.ugcs.some(cu => cu.ugcId === u.id && cu.estado === 'Calificado')
+              c.ugcs.some(cu => cu.ugcId === u.id && cu.estado === 'Activo')
             );
 
             return (

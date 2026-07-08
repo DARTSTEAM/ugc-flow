@@ -348,7 +348,6 @@ app.get('/api/campaigns', async (req, res) => {
       descripcion: c.description || '',
       fechaInicio: c.start_date?.value || c.start_date || '',
       fechaFin: c.end_date?.value || c.end_date || '',
-      objetivo: 10,
       ugcs: ccRows
         .filter(cc => cc.campaign_id === c.campaign_id)
         .map(cc => ({
@@ -383,7 +382,7 @@ app.put('/api/campaigns/:id', async (req, res) => {
 // ─── POST /api/campaigns ────────────────────────────────────────────
 app.post('/api/campaigns', async (req, res) => {
   try {
-    const { id, nombre, marca, descripcion, fechaInicio, fechaFin, objetivo, mensajeContacto } = req.body;
+    const { id, nombre, marca, descripcion, fechaInicio, fechaFin, mensajeContacto } = req.body;
     const brandId = marca?.toLowerCase().replace(/\s+/g, '') || 'popeyes';
     await q(`
       INSERT INTO ${DATASET}.campaigns (campaign_id, brand_id, name, slug, start_date, end_date, status, description, mensaje_contacto, created_at)
@@ -649,6 +648,27 @@ app.delete('/api/campaigns/:id/creators/:creatorId', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('DELETE /api/campaigns/:id/creators/:creatorId error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PATCH /api/campaigns/:id/creators/:creatorId ───────────────────
+// Recalifica a un creador dentro de una campaña (Pendiente / Activo / En Negociación / Descartado).
+const ESTADOS_EN_CAMPANA = ['Pendiente', 'Activo', 'En Negociación', 'Descartado'];
+app.patch('/api/campaigns/:id/creators/:creatorId', async (req, res) => {
+  try {
+    const { id, creatorId } = req.params;
+    const { estado } = req.body;
+    if (!ESTADOS_EN_CAMPANA.includes(estado)) {
+      return res.status(400).json({ error: `estado inválido: ${estado}` });
+    }
+    await q(
+      `UPDATE ${DATASET}.campaign_creators SET estado = @estado WHERE campaign_id = @id AND creator_id = @creatorId`,
+      { id, creatorId, estado }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PATCH /api/campaigns/:id/creators/:creatorId error:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Rocket, Pause, Play, Trash2,
+  ArrowLeft, Rocket, Pause, Play, Trash2, Megaphone,
   ChevronDown, ChevronUp, ChevronsUpDown,
-  MessageCircleMore, X, Send, Zap, MessageSquare, Loader2, RefreshCw,
-  Eye, Heart, MessageCircle, Share2, Link2, ExternalLink, AlertTriangle, Activity, HelpCircle, Sparkles, Smile
+  MessageCircleMore, X, Send, Zap, Loader2, RefreshCw,
+  Eye, Heart, MessageCircle, Share2, Link2, ExternalLink, AlertTriangle, Activity, HelpCircle, Sparkles, Smile, Users, Check
 } from 'lucide-react';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import instagramLogo from '../assets/instagram-logo.png';
@@ -35,12 +35,14 @@ interface Props {
   onTogglePause: (campana: Campana) => void;
   onLanzar: (campana: Campana) => void;
   onDeleteCampana: (campana: Campana) => void;
+  onUpdateEstadoCreador: (campanaId: string, creatorId: string, estado: EstadoEnCampana) => void;
+  onGoToChat: (ugc: UGC) => void;
 }
 
 type SortKey2 = 'nombre' | 'estado' | 'score' | 'fechaEnvio';
 type SortDir = 'asc' | 'desc';
 
-const ESTADOS_EN: EstadoEnCampana[] = ['Enviado', 'Respondió', 'Pendiente', 'Calificado', 'No aplica'];
+const ESTADOS_EN: EstadoEnCampana[] = ['Pendiente', 'Activo', 'En Negociación', 'Descartado'];
 
 /** Tooltip por portal (mismo patrón que UGCDrawer.MetricRow). */
 function Tip({ text, children }: { text: string; children: React.ReactNode }) {
@@ -150,7 +152,88 @@ function SentimentCard({ sentimiento }: { sentimiento: SentimientoCampana | null
   );
 }
 
-export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, onLanzar, onDeleteCampana }: Props) {
+/**
+ * Dropdown custom para recalificar a un creador dentro de una campaña.
+ * Reemplaza al <select> nativo: el trigger es un badge del color del estado
+ * actual, y el panel lista las 4 categorías como chips coloreados con check
+ * en la seleccionada. El panel se renderiza por portal (mismo patrón que Tip)
+ * para no quedar recortado dentro de contenedores con scroll (tabla, modal).
+ */
+function EstadoSelect({ value, onChange }: { value: EstadoEnCampana; onChange: (estado: EstadoEnCampana) => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const cfg = ESTADO_EN_CAMPANA_CONFIG[value];
+
+  function handleToggle() {
+    if (!open) {
+      const r = triggerRef.current?.getBoundingClientRect();
+      if (r) setPos({ top: r.bottom + 6, left: r.left });
+    }
+    setOpen(o => !o);
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      const target = e.target as Node;
+      if (triggerRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={handleToggle}
+        title="Recalificar creador"
+        className={`flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-md text-xs font-semibold cursor-pointer transition-all duration-150 ${cfg.className}`}
+        style={{ boxShadow: open ? '0 0 0 2px var(--color-brand)' : 'none' }}
+      >
+        {cfg.label}
+        <ChevronDown className="w-3 h-3 transition-transform duration-200" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+      </button>
+
+      {open && createPortal(
+        <div
+          ref={panelRef}
+          className="w-44 rounded-xl border p-1 popover-enter"
+          style={{
+            position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999,
+            backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)',
+          }}
+        >
+          {ESTADOS_EN.map(e => {
+            const eCfg = ESTADO_EN_CAMPANA_CONFIG[e];
+            const isSelected = e === value;
+            return (
+              <button
+                key={e}
+                type="button"
+                onClick={() => { onChange(e); setOpen(false); }}
+                className="w-full flex items-center gap-2 px-1.5 py-1 rounded-lg transition-colors duration-150"
+                onMouseEnter={ev => (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                onMouseLeave={ev => (ev.currentTarget as HTMLElement).style.backgroundColor = ''}
+              >
+                <span className={`flex-1 text-left px-2 py-1 rounded-md text-[11px] font-semibold ${eCfg.className}`}>{eCfg.label}</span>
+                {isSelected && <Check className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />}
+              </button>
+            );
+          })}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
+export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, onLanzar, onDeleteCampana, onUpdateEstadoCreador, onGoToChat }: Props) {
   const [filterEstado, setFilterEstado] = useState<EstadoEnCampana | ''>('');
   const [sortKey, setSortKey] = useState<SortKey2>('score');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -160,9 +243,6 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   const [showPauseConfirm, setShowPauseConfirm] = useState(false);
   const [isScraping, setIsScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<{ success: number; failed: number } | null>(null);
-  const [overrideUGC, setOverrideUGC] = useState<UGC | null>(null);
-  const [overrideMsg, setOverrideMsg] = useState('');
-  const [overrideSent, setOverrideSent] = useState(false);
 
   // ── Contenido de campaña + métricas ──
   const [content, setContent] = useState<ContenidoCampana[]>([]);
@@ -173,6 +253,9 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   const [scrapingContent, setScrapingContent] = useState(false);
   const [urlInputs, setUrlInputs] = useState<Record<string, string>>({});
   const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [posteosOpen, setPosteosOpen] = useState(false);
+  const [creadoresOpen, setCreadoresOpen] = useState(false);
+  const [modalEstado, setModalEstado] = useState<EstadoEnCampana | null>(null);
 
   const loadContent = useCallback(async () => {
     try {
@@ -231,11 +314,12 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
 
   const estadoCfg = ESTADO_CAMPANA_CONFIG[campana.estado];
 
-  const enviados = campana.ugcs.filter(u => u.estado !== 'No aplica').length;
-  const respondidos = campana.ugcs.filter(u => ['Respondió', 'Calificado'].includes(u.estado)).length;
-  const pendientes = campana.ugcs.filter(u => u.estado === 'Pendiente' || u.estado === 'Enviado').length;
-  const calificados = campana.ugcs.filter(u => u.estado === 'Calificado').length;
-  const progreso = Math.round((enviados / campana.objetivo) * 100);
+  const conteoPorEstado: Record<EstadoEnCampana, number> = {
+    Pendiente: campana.ugcs.filter(u => u.estado === 'Pendiente').length,
+    Activo: campana.ugcs.filter(u => u.estado === 'Activo').length,
+    'En Negociación': campana.ugcs.filter(u => u.estado === 'En Negociación').length,
+    Descartado: campana.ugcs.filter(u => u.estado === 'Descartado').length,
+  };
 
   function handleSort(k: SortKey2) {
     if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -264,8 +348,16 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       return sortDir === 'asc' ? cmp : -cmp;
     });
 
+  const modalCreadores = modalEstado
+    ? campana.ugcs
+        .filter(uc => uc.estado === modalEstado)
+        .map(uc => ({ uc, ugc: ugcs.find(u => u.id === uc.ugcId) }))
+        .filter((x): x is { uc: typeof x.uc; ugc: UGC } => !!x.ugc)
+        .sort((a, b) => a.ugc.nombre.localeCompare(b.ugc.nombre))
+    : [];
+
   return (
-    <div className="h-full flex flex-col gap-5">
+    <div className="flex flex-col gap-5">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
@@ -291,66 +383,93 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
           <button
             onClick={() => setShowDeleteConfirm(true)}
             title="Eliminar campaña"
-            className="flex items-center gap-2 px-3 py-2 border rounded-xl text-sm font-semibold transition-all duration-200"
+            className="group flex items-center px-2.5 py-2 border rounded-xl text-sm font-semibold transition-all duration-200"
             style={{ borderColor: '#fecdd3', backgroundColor: '#fff1f2', color: '#e11d48' }}
             onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#ffe4e6'}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#fff1f2'}
           >
-            <Trash2 className="w-3.5 h-3.5" />
-            Eliminar
+            <Trash2 className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-200 ease-out">
+              <span className="overflow-hidden whitespace-nowrap">
+                <span className="pl-2">Eliminar</span>
+              </span>
+            </span>
           </button>
           {campana.estado !== 'Cerrada' && campana.estado !== 'Borrador' && (
             <button
               onClick={() => { if (campana.estado === 'Pausada') onTogglePause(campana); else setShowPauseConfirm(true); }}
-              className="flex items-center gap-2 px-3 py-2 border rounded-xl text-sm font-semibold transition-all duration-200"
+              title={campana.estado === 'Pausada' ? 'Reanudar campaña' : 'Pausar campaña'}
+              className="group flex items-center px-2.5 py-2 border rounded-xl text-sm font-semibold transition-all duration-200"
               style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface)', color: 'var(--color-text-2)' }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
             >
-              {campana.estado === 'Pausada' ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-              {campana.estado === 'Pausada' ? 'Reanudar' : 'Pausar'}
+              {campana.estado === 'Pausada' ? <Play className="w-3.5 h-3.5 flex-shrink-0" /> : <Pause className="w-3.5 h-3.5 flex-shrink-0" />}
+              <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-200 ease-out">
+                <span className="overflow-hidden whitespace-nowrap">
+                  <span className="pl-2">{campana.estado === 'Pausada' ? 'Reanudar' : 'Pausar'}</span>
+                </span>
+              </span>
             </button>
           )}
+          <button
+            onClick={() => setShowEnvioModal(true)}
+            title="Mensaje general"
+            className="group flex items-center px-2.5 py-2 border rounded-xl text-sm font-semibold transition-all duration-200"
+            style={{ borderColor: '#e9d5ff', backgroundColor: '#faf5ff', color: '#9333ea' }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#f3e8ff'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#faf5ff'}
+          >
+            <Megaphone className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-200 ease-out">
+              <span className="overflow-hidden whitespace-nowrap">
+                <span className="pl-2">Mensaje general</span>
+              </span>
+            </span>
+          </button>
           {campana.estado !== 'Cerrada' && (
             <button
               onClick={() => setShowLanzarModal(true)}
-              className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 active:scale-[0.97]"
+              title="Lanzar envío"
+              className="group flex items-center px-3 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200 active:scale-[0.97]"
               style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
             >
-              <Rocket className="w-3.5 h-3.5" />
-              Lanzar envío
+              <Rocket className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-200 ease-out">
+                <span className="overflow-hidden whitespace-nowrap">
+                  <span className="pl-2">Lanzar envío</span>
+                </span>
+              </span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Progress + embudo (cifras funcionales, en chico) */}
-      <div className="p-4 border rounded-xl" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold" style={{ color: 'var(--color-text-2)' }}>Progreso de campaña</span>
-          <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-1)' }}>{enviados}/{campana.objetivo} UGCs</span>
+      {/* ── Progreso de campaña (tarjetas por categoría; clic abre el detalle) ── */}
+      <div className="border rounded-2xl p-4 flex flex-col gap-3" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+          <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Progreso de campaña</h3>
         </div>
-        <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
-          <div
-            className="h-full rounded-full transition-all duration-700"
-            style={{ width: `${Math.min(progreso, 100)}%`, backgroundColor: 'var(--color-brand)' }}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5">
-          <span className="text-[10px] font-mono" style={{ color: 'var(--color-text-3)' }}>{progreso}% completado</span>
-          <span className="text-[10px]" style={{ color: 'var(--color-border)' }}>·</span>
-          {[
-            { label: 'enviados', value: enviados },
-            { label: 'respondidos', value: respondidos },
-            { label: 'pendientes', value: pendientes },
-            { label: 'calificados', value: calificados },
-          ].map(s => (
-            <span key={s.label} className="text-[11px]" style={{ color: 'var(--color-text-3)' }}>
-              <span className="font-mono font-bold" style={{ color: 'var(--color-text-2)' }}>{s.value}</span> {s.label}
-            </span>
-          ))}
+
+        <div className="flex gap-3 flex-wrap">
+          {ESTADOS_EN.map(estado => {
+            const cfg = ESTADO_EN_CAMPANA_CONFIG[estado];
+            return (
+              <button
+                key={estado}
+                onClick={() => setModalEstado(estado)}
+                className={`flex-1 min-w-[120px] px-3 py-2.5 border rounded-xl text-center transition-all duration-150 flex items-center justify-center gap-1.5 ${cfg.className}`}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = '0 0 0 2px currentColor'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+              >
+                <span className="text-xl font-black font-mono leading-none">{conteoPorEstado[estado]}</span>
+                <span className="text-xs font-semibold whitespace-nowrap">{cfg.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -405,277 +524,307 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
       </div>
 
       {/* ── Posteos de campaña (carga de URLs + tops) ────────────────────────── */}
-      <div className="border rounded-2xl p-4 flex flex-col gap-4" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
-        <div className="flex items-center gap-2">
-          <Link2 className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
-          <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Posteos de campaña</h3>
-        </div>
-
-        {/* Warning: creadores sin posteos cargados */}
-        {creadoresSinPosteos.length > 0 && (
-          <div className="flex items-start gap-2.5 p-3 rounded-xl border" style={{ backgroundColor: 'rgba(252,154,0,0.08)', borderColor: 'rgba(252,154,0,0.3)' }}>
-            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'rgb(180,83,9)' }} />
-            <div className="text-xs" style={{ color: 'rgb(146,64,14)' }}>
-              Las métricas están incompletas porque no se están teniendo en cuenta algunos posteos.
-              Falta cargar{' '}
-              <span className="font-bold">{creadoresSinPosteos.length}</span>{' '}
-              {creadoresSinPosteos.length === 1 ? 'creador' : 'creadores'}:{' '}
-              <span className="font-semibold">{creadoresSinPosteos.map(c => c.nombre).join(', ')}</span>.
-            </div>
+      <div className="border rounded-2xl p-4" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+        <button
+          type="button"
+          onClick={() => setPosteosOpen(o => !o)}
+          className="w-full flex items-center justify-between gap-2"
+        >
+          <div className="flex items-center gap-2">
+            <Link2 className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+            <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Posteos de campaña</h3>
+            {creadoresSinPosteos.length > 0 && (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold" style={{ backgroundColor: '#fff1f2', color: '#e11d48' }}>
+                {creadoresSinPosteos.length} Sin completar
+              </span>
+            )}
           </div>
-        )}
+          <ChevronDown
+            className="w-4 h-4 transition-transform duration-200"
+            style={{ color: 'var(--color-text-3)', transform: posteosOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
+        </button>
 
-        {/* Carga de URLs por creador */}
-        <div className="border rounded-xl overflow-hidden" style={{ borderColor: 'var(--color-border-subtle)' }}>
-          <div className="px-3 py-2 border-b flex items-center gap-2" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-alt)' }}>
-            <Link2 className="w-3.5 h-3.5" style={{ color: 'var(--color-text-3)' }} />
-            <span className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>Posteos por creador</span>
-          </div>
-          {contentLoading ? (
-            <div className="py-6 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--color-text-3)' }} /></div>
-          ) : campana.ugcs.length === 0 ? (
-            <p className="py-6 text-center text-xs italic" style={{ color: 'var(--color-text-3)' }}>No hay creadores asignados a esta campaña</p>
-          ) : (
-            <div className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
-              {campana.ugcs.map(uc => {
-                const ugc = ugcs.find(u => u.id === uc.ugcId);
-                if (!ugc) return null;
-                const piezas = content.filter(c => c.creatorId === uc.ugcId);
-                const av = avatarColor(ugc.id);
-                return (
-                  <div key={uc.ugcId} className="px-3 py-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-bold ${av}`}>{getInitials(ugc.nombre)}</div>
-                      <span className="text-sm font-semibold" style={{ color: 'var(--color-text-1)' }}>{ugc.nombre}</span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}>
-                        {piezas.length} {piezas.length === 1 ? 'posteo' : 'posteos'}
-                      </span>
-                    </div>
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-out"
+          style={{ gridTemplateRows: posteosOpen ? '1fr' : '0fr' }}
+        >
+          <div className="overflow-hidden min-h-0">
+            <div className="flex flex-col gap-4 pt-4">
+              {/* Warning: creadores sin posteos cargados */}
+              {creadoresSinPosteos.length > 0 && (
+                <div className="flex items-start gap-2.5 p-3 rounded-xl border" style={{ backgroundColor: 'rgba(252,154,0,0.08)', borderColor: 'rgba(252,154,0,0.3)' }}>
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'rgb(180,83,9)' }} />
+                  <div className="text-xs" style={{ color: 'rgb(146,64,14)' }}>
+                    Las métricas están incompletas porque no se están teniendo en cuenta algunos posteos.
+                    Falta cargar{' '}
+                    <span className="font-bold">{creadoresSinPosteos.length}</span>{' '}
+                    {creadoresSinPosteos.length === 1 ? 'creador' : 'creadores'}:{' '}
+                    <span className="font-semibold">{creadoresSinPosteos.map(c => c.nombre).join(', ')}</span>.
+                  </div>
+                </div>
+              )}
 
-                    {/* Lista de posteos del creador */}
-                    {piezas.length > 0 && (
-                      <div className="flex flex-col gap-1.5 mb-2">
-                        {piezas.map(p => (
-                          <div key={p.id} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
-                            <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 min-w-0 flex-1 hover:underline" style={{ color: 'var(--color-text-2)' }}>
-                              <ExternalLink className="w-3 h-3 flex-shrink-0" />
-                              <span className="truncate">{p.url}</span>
-                            </a>
-                            {p.views != null ? (
-                              <span className="font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>
-                                {fmt(p.views)} vistas · {p.engagementRate != null ? `${p.engagementRate}%` : '—'} ER
-                              </span>
-                            ) : p.scrapeError ? (
-                              <span className="font-mono flex-shrink-0 text-rose-500" title={p.scrapeError}>error</span>
-                            ) : (
-                              <span className="font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>sin métricas</span>
-                            )}
-                            <button onClick={() => handleDeleteContent(p.id)} title="Quitar posteo" className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors hover:text-rose-500" style={{ color: 'var(--color-text-3)' }}>
-                              <X className="w-3 h-3" />
+              {/* Carga de URLs por creador */}
+              <div className="border rounded-xl overflow-hidden" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <div className="px-3 py-2 border-b flex items-center gap-2" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-alt)' }}>
+                  <Link2 className="w-3.5 h-3.5" style={{ color: 'var(--color-text-3)' }} />
+                  <span className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>Posteos por creador</span>
+                </div>
+                {contentLoading ? (
+                  <div className="py-6 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin" style={{ color: 'var(--color-text-3)' }} /></div>
+                ) : campana.ugcs.length === 0 ? (
+                  <p className="py-6 text-center text-xs italic" style={{ color: 'var(--color-text-3)' }}>No hay creadores asignados a esta campaña</p>
+                ) : (
+                  <div className="divide-y" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                    {campana.ugcs.map(uc => {
+                      const ugc = ugcs.find(u => u.id === uc.ugcId);
+                      if (!ugc) return null;
+                      const piezas = content.filter(c => c.creatorId === uc.ugcId);
+                      const av = avatarColor(ugc.id);
+                      return (
+                        <div key={uc.ugcId} className="px-3 py-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[9px] font-bold ${av}`}>{getInitials(ugc.nombre)}</div>
+                            <span className="text-sm font-semibold" style={{ color: 'var(--color-text-1)' }}>{ugc.nombre}</span>
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}>
+                              {piezas.length} {piezas.length === 1 ? 'posteo' : 'posteos'}
+                            </span>
+                          </div>
+
+                          {/* Lista de posteos del creador */}
+                          {piezas.length > 0 && (
+                            <div className="flex flex-col gap-1.5 mb-2">
+                              {piezas.map(p => (
+                                <div key={p.id} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
+                                  <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 min-w-0 flex-1 hover:underline" style={{ color: 'var(--color-text-2)' }}>
+                                    <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{p.url}</span>
+                                  </a>
+                                  {p.views != null ? (
+                                    <span className="font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>
+                                      {fmt(p.views)} vistas · {p.engagementRate != null ? `${p.engagementRate}%` : '—'} ER
+                                    </span>
+                                  ) : p.scrapeError ? (
+                                    <span className="font-mono flex-shrink-0 text-rose-500" title={p.scrapeError}>error</span>
+                                  ) : (
+                                    <span className="font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>sin métricas</span>
+                                  )}
+                                  <button onClick={() => handleDeleteContent(p.id)} title="Quitar posteo" className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded transition-colors hover:text-rose-500" style={{ color: 'var(--color-text-3)' }}>
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Input para agregar URL */}
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="url"
+                              value={urlInputs[uc.ugcId] || ''}
+                              onChange={e => setUrlInputs(prev => ({ ...prev, [uc.ugcId]: e.target.value }))}
+                              onKeyDown={e => { if (e.key === 'Enter') handleAddUrl(uc.ugcId); }}
+                              placeholder="Pegá la URL del posteo (Instagram o TikTok)…"
+                              className="flex-1 px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none transition-all duration-200"
+                              style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
+                              onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)'; }}
+                              onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
+                            />
+                            <button
+                              onClick={() => handleAddUrl(uc.ugcId)}
+                              disabled={!((urlInputs[uc.ugcId] || '').trim()) || addingFor === uc.ugcId}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                              style={{ backgroundColor: 'var(--color-brand)', color: '#fff' }}
+                            >
+                              {addingFor === uc.ugcId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
+                              Agregar
                             </button>
                           </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Input para agregar URL */}
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="url"
-                        value={urlInputs[uc.ugcId] || ''}
-                        onChange={e => setUrlInputs(prev => ({ ...prev, [uc.ugcId]: e.target.value }))}
-                        onKeyDown={e => { if (e.key === 'Enter') handleAddUrl(uc.ugcId); }}
-                        placeholder="Pegá la URL del posteo (Instagram o TikTok)…"
-                        className="flex-1 px-2.5 py-1.5 border rounded-lg text-xs focus:outline-none transition-all duration-200"
-                        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
-                        onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)'; }}
-                        onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
-                      />
-                      <button
-                        onClick={() => handleAddUrl(uc.ugcId)}
-                        disabled={!((urlInputs[uc.ugcId] || '').trim()) || addingFor === uc.ugcId}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                        style={{ backgroundColor: 'var(--color-brand)', color: '#fff' }}
-                      >
-                        {addingFor === uc.ugcId ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
-                        Agregar
-                      </button>
-                    </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                )}
+              </div>
 
-        {/* Top contenidos por interacción */}
-        {metricas && metricas.topContenidos.length > 0 && (
-          <div className="border rounded-xl p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
-            <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-3)' }}>Top contenidos · por interacción</p>
-            <div className="flex flex-col">
-              {metricas.topContenidos.slice(0, 5).map((p, i) => {
-                const av = avatarColor(p.creatorId);
-                const platformLogo = p.platform === 'instagram' ? instagramLogo : p.platform === 'tiktok' ? tiktokLogo : null;
-                return (
-                  <div key={p.id} className="flex items-center gap-2.5 py-1.5 px-1.5 rounded-lg transition-colors duration-150"
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
-                  >
-                    <span className="flex items-center justify-center w-5 h-5 rounded-md text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}>
-                      {i + 1}
-                    </span>
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${av}`}>
-                      {getInitials(p.creatorNombre)}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-1)' }}>{p.creatorNombre}</span>
-                        {platformLogo && <img src={platformLogo} alt={p.platform} className="w-3 h-3 object-contain flex-shrink-0" />}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs mt-0.5">
-                        <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-semibold hover:underline" style={{ color: 'var(--color-brand)' }}>
-                          <ExternalLink className="w-3 h-3" />
-                          Ver Posteo
-                        </a>
-                        <span style={{ color: 'var(--color-border)' }}>·</span>
-                        <span className="font-mono" style={{ color: 'var(--color-text-2)' }}>{fmt(p.interacciones)} interacciones</span>
-                      </div>
-                    </div>
+              {/* Top contenidos por interacción */}
+              {metricas && metricas.topContenidos.length > 0 && (
+                <div className="border rounded-xl p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                  <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-2" style={{ color: 'var(--color-text-3)' }}>Top contenidos · por interacción</p>
+                  <div className="flex flex-col">
+                    {metricas.topContenidos.slice(0, 5).map((p, i) => {
+                      const av = avatarColor(p.creatorId);
+                      const platformLogo = p.platform === 'instagram' ? instagramLogo : p.platform === 'tiktok' ? tiktokLogo : null;
+                      return (
+                        <div key={p.id} className="flex items-center gap-2.5 py-1.5 px-1.5 rounded-lg transition-colors duration-150"
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+                        >
+                          <span className="flex items-center justify-center w-5 h-5 rounded-md text-[10px] font-bold flex-shrink-0" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}>
+                            {i + 1}
+                          </span>
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${av}`}>
+                            {getInitials(p.creatorNombre)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-1)' }}>{p.creatorNombre}</span>
+                              {platformLogo && <img src={platformLogo} alt={p.platform} className="w-3 h-3 object-contain flex-shrink-0" />}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-xs mt-0.5">
+                              <a href={p.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 font-semibold hover:underline" style={{ color: 'var(--color-brand)' }}>
+                                <ExternalLink className="w-3 h-3" />
+                                Ver Posteo
+                              </a>
+                              <span style={{ color: 'var(--color-border)' }}>·</span>
+                              <span className="font-mono" style={{ color: 'var(--color-text-2)' }}>{fmt(p.interacciones)} interacciones</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Contactar creadores */}
-      <div className="border rounded-xl p-4" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(252,154,0,0.1)' }}>
-              <Send className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold" style={{ color: 'var(--color-text-1)' }}>Contactar creadores por WhatsApp</p>
-              {campana.mensajeContacto ? (
-                <p className="text-[11px] truncate mt-0.5" style={{ color: 'var(--color-text-3)' }}>
-                  {campana.mensajeContacto}
-                </p>
-              ) : (
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-3)' }}>
-                  Sin mensaje de contacto definido
-                </p>
+                </div>
               )}
             </div>
           </div>
-          <button
-            onClick={() => setShowEnvioModal(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-white transition-all active:scale-[0.97] flex-shrink-0"
-            style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            Enviar a creadores
-          </button>
         </div>
       </div>
 
-      {/* UGC Table */}
+      {/* ── Detalle de creadores (tabla completa, filtrable) ─────────────────── */}
+      <div className="border rounded-2xl p-4" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+        <button
+          type="button"
+          onClick={() => setCreadoresOpen(o => !o)}
+          className="w-full flex items-center justify-between gap-2"
+        >
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+            <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Detalle de creadores</h3>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}>
+              {campana.ugcs.length} {campana.ugcs.length === 1 ? 'creador' : 'creadores'}
+            </span>
+          </div>
+          <ChevronDown
+            className="w-4 h-4 transition-transform duration-200"
+            style={{ color: 'var(--color-text-3)', transform: creadoresOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
+        </button>
 
-      <div className="border rounded-2xl overflow-hidden flex flex-col flex-1"
-        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
-        <div className="px-4 pt-3 pb-2 border-b flex items-center justify-between gap-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-3)' }}>Creadores en esta campaña</h3>
-          <select
-            value={filterEstado}
-            onChange={e => setFilterEstado(e.target.value as EstadoEnCampana | '')}
-            className="px-3 py-1.5 border rounded-xl text-xs focus:outline-none transition-all duration-200"
-            style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-2)' }}
-            onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)'; }}
-            onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
-          >
-            <option value="">Todos los estados</option>
-            {ESTADOS_EN.map(e => <option key={e} value={e}>{e}</option>)}
-          </select>
-        </div>
-        <div className="overflow-auto flex-1">
-          <table className="w-full text-left border-separate border-spacing-0 min-w-[600px]">
-            <thead className="sticky top-0 z-10" style={{ backgroundColor: 'var(--color-surface)' }}>
-              <tr>
-                {[
-                  { key: 'nombre', label: 'Creador' },
-                  { key: 'estado', label: 'Estado' },
-                  { key: 'score', label: 'Score' },
-                  { key: 'fechaEnvio', label: 'Fecha envío' },
-                ].map(col => (
-                  <th key={col.key} onClick={() => handleSort(col.key as SortKey2)}
-                    className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b cursor-pointer select-none whitespace-nowrap transition-colors duration-200"
-                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'}
-                  >
-                    <div className="flex items-center gap-1">{col.label}<SortIcon col={col.key as SortKey2} /></div>
-                  </th>
-                ))}
-                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}>Fecha respuesta</th>
-                <th className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr><td colSpan={6} className="py-10 text-center text-sm italic" style={{ color: 'var(--color-text-3)' }}>No hay creadores con este filtro</td></tr>
-              ) : rows.map(({ uc, ugc }) => {
-                const sc = scoreColor(ugc!.score);
-                const estadoCfg = ESTADO_EN_CAMPANA_CONFIG[uc.estado];
-                const av = avatarColor(ugc!.id);
-                return (
-                  <tr key={uc.ugcId} className="transition-colors duration-150"
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
-                  >
-                    <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold ${av}`}>
-                          {getInitials(ugc!.nombre)}
-                        </div>
-                        <span className="text-sm font-semibold" style={{ color: 'var(--color-text-1)' }}>{ugc!.nombre}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-semibold ${estadoCfg.className}`}>{estadoCfg.label}</span>
-                    </td>
-                    <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
-                          <div className={`h-full ${sc.bar} rounded-full`} style={{ width: `${ugc!.score}%` }} />
-                        </div>
-                        <span className={`text-xs font-mono font-bold ${sc.text}`}>{ugc!.score}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-3)' }}>{uc.fechaEnvio}</td>
-                    <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-3)' }}>
-                      {uc.fechaRespuesta ?? <span style={{ color: 'var(--color-border)' }}>—</span>}
-                    </td>
-                    <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                      <button
-                        onClick={() => { setOverrideUGC(ugc!); setOverrideMsg(''); setOverrideSent(false); }}
-                        title="Override bot — contactar directamente"
-                        className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold rounded-lg transition-all duration-200 whitespace-nowrap"
-                        style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)', color: 'var(--color-brand-hover)', border: '1px solid var(--color-brand-border)' }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#ffe8b5'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-light)'}
-                      >
-                        <Zap className="w-3 h-3" />
-                        Override
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-out"
+          style={{ gridTemplateRows: creadoresOpen ? '1fr' : '0fr' }}
+        >
+          <div className="overflow-hidden min-h-0">
+            <div className="flex flex-col gap-3 pt-4">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setFilterEstado('')}
+                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap border transition-all duration-150"
+                  style={{
+                    backgroundColor: 'var(--color-surface-alt)', borderColor: 'var(--color-border)', color: 'var(--color-text-2)',
+                    boxShadow: filterEstado === '' ? '0 0 0 1px var(--color-brand)' : 'none',
+                  }}
+                >
+                  Todos
+                </button>
+                {ESTADOS_EN.map(e => {
+                  const cfg = ESTADO_EN_CAMPANA_CONFIG[e];
+                  const isActive = filterEstado === e;
+                  return (
+                    <button
+                      key={e}
+                      onClick={() => setFilterEstado(isActive ? '' : e)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${cfg.className}`}
+                      style={{ opacity: filterEstado && !isActive ? 0.45 : 1, boxShadow: isActive ? '0 0 0 1px var(--color-brand)' : 'none' }}
+                    >
+                      {cfg.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="border rounded-xl overflow-hidden" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-separate border-spacing-0 min-w-[600px]">
+                    <thead style={{ backgroundColor: 'var(--color-surface)' }}>
+                      <tr>
+                        {[
+                          { key: 'nombre', label: 'Creador' },
+                          { key: 'estado', label: 'Estado' },
+                          { key: 'score', label: 'Score' },
+                          { key: 'fechaEnvio', label: 'Fecha envío' },
+                        ].map(col => (
+                          <th key={col.key} onClick={() => handleSort(col.key as SortKey2)}
+                            className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b cursor-pointer select-none whitespace-nowrap transition-colors duration-200"
+                            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'}
+                          >
+                            <div className="flex items-center gap-1">{col.label}<SortIcon col={col.key as SortKey2} /></div>
+                          </th>
+                        ))}
+                        <th className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}>Fecha respuesta</th>
+                        <th className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.length === 0 ? (
+                        <tr><td colSpan={6} className="py-10 text-center text-sm italic" style={{ color: 'var(--color-text-3)' }}>No hay creadores con este filtro</td></tr>
+                      ) : rows.map(({ uc, ugc }) => {
+                        const sc = scoreColor(ugc!.score);
+                        const av = avatarColor(ugc!.id);
+                        return (
+                          <tr key={uc.ugcId} className="transition-colors duration-150"
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+                          >
+                            <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                              <div className="flex items-center gap-2">
+                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold ${av}`}>
+                                  {getInitials(ugc!.nombre)}
+                                </div>
+                                <span className="text-sm font-semibold" style={{ color: 'var(--color-text-1)' }}>{ugc!.nombre}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                              <EstadoSelect value={uc.estado} onChange={next => onUpdateEstadoCreador(campana.id, uc.ugcId, next)} />
+                            </td>
+                            <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                                  <div className={`h-full ${sc.bar} rounded-full`} style={{ width: `${ugc!.score}%` }} />
+                                </div>
+                                <span className={`text-xs font-mono font-bold ${sc.text}`}>{ugc!.score}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-3)' }}>{uc.fechaEnvio}</td>
+                            <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-3)' }}>
+                              {uc.fechaRespuesta ?? <span style={{ color: 'var(--color-border)' }}>—</span>}
+                            </td>
+                            <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                              <button
+                                onClick={() => onGoToChat(ugc!)}
+                                title="Ir al chat con este creador"
+                                className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-semibold rounded-lg transition-all duration-200 whitespace-nowrap"
+                                style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)', color: 'var(--color-brand-hover)', border: '1px solid var(--color-brand-border)' }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = '#ffe8b5'}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-light)'}
+                              >
+                                <MessageCircle className="w-3 h-3" />
+                                Ir al chat
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -693,6 +842,59 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
         onConfirm={() => { onDeleteCampana(campana); setShowDeleteConfirm(false); }}
         onCancel={() => setShowDeleteConfirm(false)}
       />
+
+      {/* Modal: creadores de una categoría del progreso de campaña, recalificables */}
+      {modalEstado && (
+        <>
+          <div
+            className="fixed inset-0 z-50 overlay-enter"
+            style={{ backgroundColor: 'rgba(9,10,15,0.45)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setModalEstado(null)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
+            <div className="rounded-2xl w-full max-w-md pointer-events-auto modal-enter border flex flex-col max-h-[80vh]"
+              style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}>
+              <div className="px-6 pt-5 pb-4 border-b flex items-start justify-between flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-brand-light)' }}>
+                    <Users className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>{ESTADO_EN_CAMPANA_CONFIG[modalEstado].label}</h3>
+                    <p className="text-xs" style={{ color: 'var(--color-text-3)' }}>{modalCreadores.length} creador{modalCreadores.length !== 1 ? 'es' : ''}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalEstado(null)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors duration-200 flex-shrink-0"
+                  style={{ color: 'var(--color-text-3)' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2">
+                {modalCreadores.length === 0 ? (
+                  <p className="py-8 text-center text-sm italic" style={{ color: 'var(--color-text-3)' }}>No hay creadores en esta categoría</p>
+                ) : modalCreadores.map(({ uc, ugc }) => {
+                  const av = avatarColor(ugc.id);
+                  return (
+                    <div key={uc.ugcId} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${av}`}>
+                        {getInitials(ugc.nombre)}
+                      </div>
+                      <span className="text-sm font-semibold flex-1 min-w-0 truncate" style={{ color: 'var(--color-text-1)' }}>{ugc.nombre}</span>
+                      <EstadoSelect value={uc.estado} onChange={next => onUpdateEstadoCreador(campana.id, uc.ugcId, next)} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Confirmación de pausa */}
       {showPauseConfirm && (

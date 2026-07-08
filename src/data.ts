@@ -3,7 +3,7 @@
 export type Canal = 'WhatsApp' | 'Instagram' | 'Email';
 export type EstadoUGC = 'Nuevo' | 'Contactado' | 'Respondió' | 'Calificado' | 'Descartado';
 export type EstadoCampana = 'Borrador' | 'Activa' | 'Pausada' | 'Cerrada';
-export type EstadoEnCampana = 'Enviado' | 'Respondió' | 'Pendiente' | 'Calificado' | 'No aplica';
+export type EstadoEnCampana = 'Pendiente' | 'Activo' | 'En Negociación' | 'Descartado';
 
 export interface ScoreBreakdown {
   criterio: string;
@@ -179,7 +179,6 @@ export interface Campana {
   descripcion: string;
   fechaInicio: string;
   fechaFin: string;
-  objetivo: number;
   ugcs: UGCEnCampana[];
   marca?: string;
   mensajeContacto?: string;  // template de WhatsApp para outreach masivo

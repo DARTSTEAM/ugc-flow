@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  X, Rocket, Calendar, FileText, Target, Tag,
+  X, Rocket, Calendar, FileText, Tag,
   ChevronRight, ChevronLeft, Users, MessageSquare,
   Check, Search, Plus, Trash2, GripVertical,
 } from 'lucide-react';
@@ -58,7 +58,6 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
   const [descripcion, setDescripcion] = useState('');
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
-  const [objetivo, setObjetivo] = useState(10);
   const [estado, setEstado] = useState<EstadoCampana>('Borrador');
   const [mensajeContacto, setMensajeContacto] = useState('');
   const [error, setError] = useState('');
@@ -135,7 +134,6 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
       descripcion: descripcion.trim(),
       fechaInicio,
       fechaFin,
-      objetivo,
       estado,
       ugcs: ugcEntries,
       mensajeContacto: mensajeContacto.trim() || undefined,
@@ -331,21 +329,6 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                       onFocus={focusInput}
                       onBlur={blurInput}
                     />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-1"
-                    style={{ color: 'var(--color-text-3)' }}>
-                    <Target className="w-3 h-3" /> Objetivo de UGCs:{' '}
-                    <span className="font-mono ml-1" style={{ color: 'var(--color-text-1)' }}>{objetivo}</span>
-                  </label>
-                  <input
-                    type="range" min={1} max={50} value={objetivo}
-                    onChange={e => setObjetivo(+e.target.value)}
-                  />
-                  <div className="flex justify-between text-[9px] font-mono" style={{ color: 'var(--color-text-3)' }}>
-                    <span>1</span><span>50</span>
                   </div>
                 </div>
 

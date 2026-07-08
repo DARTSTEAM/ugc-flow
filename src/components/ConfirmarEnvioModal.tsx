@@ -63,7 +63,7 @@ export default function ConfirmarEnvioModal({ campana, ugcs, onClose }: Props) {
             </div>
             <button
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-200"
+              className="w-11 h-11 flex items-center justify-center rounded-lg transition-all duration-200"
               style={{ color: 'var(--color-text-3)' }}
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}

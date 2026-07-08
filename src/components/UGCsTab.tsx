@@ -73,7 +73,7 @@ function ModalShell({ children, onClose, title, subtitle, icon }: {
             </div>
             <button
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-200"
+              className="w-11 h-11 flex items-center justify-center rounded-lg transition-all duration-200"
               style={{ color: 'var(--color-text-3)' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
@@ -642,6 +642,28 @@ function ScoreBar({ score }: { score: number }) {
   );
 }
 
+// ─── Empty results state (shared by table + mobile card list) ────────────────
+function EmptyResultsState({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-20 text-center">
+      <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
+        <Search className="w-6 h-6" style={{ color: 'var(--color-text-3)' }} />
+      </div>
+      <div>
+        <p className="text-sm font-semibold" style={{ color: 'var(--color-text-2)' }}>Sin resultados</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>No se encontraron creadores con estos filtros</p>
+      </div>
+      <button
+        onClick={onClear}
+        className="text-xs font-semibold underline"
+        style={{ color: 'var(--color-brand)' }}
+      >
+        Limpiar filtros
+      </button>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDeleteUGC, onGoToChat, onAsignar }: Props) {
   const { id } = useParams<{ id: string }>();
@@ -833,9 +855,10 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
         </div>
       )}
 
-      {/* Table */}
+      {/* Table (>= sm) / Cards (< sm) */}
       <div className="flex-1 border rounded-2xl overflow-hidden flex flex-col"
         style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+        <div className="hidden sm:flex sm:flex-1 sm:flex-col sm:overflow-hidden">
         <div className="overflow-auto flex-1">
           <table className="w-full text-left border-separate border-spacing-0 min-w-[720px]">
             <thead className="sticky top-0 z-10" style={{ backgroundColor: 'var(--color-surface)' }}>
@@ -867,23 +890,8 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-20 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
-                        <Search className="w-6 h-6" style={{ color: 'var(--color-text-3)' }} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold" style={{ color: 'var(--color-text-2)' }}>Sin resultados</p>
-                        <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>No se encontraron creadores con estos filtros</p>
-                      </div>
-                      <button
-                        onClick={() => updateParams({ q: null, scoreMin: null, seguidoresMin: null, trabajoNGR: null, etiquetas: null })}
-                        className="text-xs font-semibold underline"
-                        style={{ color: 'var(--color-brand)' }}
-                      >
-                        Limpiar filtros
-                      </button>
-                    </div>
+                  <td colSpan={7}>
+                    <EmptyResultsState onClear={() => updateParams({ q: null, scoreMin: null, seguidoresMin: null, trabajoNGR: null, etiquetas: null })} />
                   </td>
                 </tr>
               ) : filtered.map((u) => {
@@ -973,6 +981,90 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
               })}
             </tbody>
           </table>
+        </div>
+        </div>
+
+        {/* Cards (< sm) */}
+        <div className="sm:hidden flex flex-col gap-2.5 p-2 flex-1 overflow-auto">
+          {filtered.length === 0 ? (
+            <EmptyResultsState onClear={() => updateParams({ q: null, scoreMin: null, seguidoresMin: null, trabajoNGR: null, etiquetas: null })} />
+          ) : filtered.map((u) => {
+            const estadoCfg = ESTADO_UGC_CONFIG[u.estado];
+            const av = avatarColor(u.id);
+            return (
+              <div
+                key={u.id}
+                onClick={() => navigate(`/ugcs/${u.id}`)}
+                className="cursor-pointer border rounded-xl p-3 flex flex-col gap-2.5"
+                style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}
+              >
+                {/* Avatar + name (left) / estado badge (right) */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${av}`}>
+                      {getInitials(u.nombre)}
+                    </div>
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="font-semibold text-sm truncate" style={{ color: 'var(--color-text-1)' }}>{u.nombre}</span>
+                      {needsInfoUpdate(u) && (
+                        <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: 'var(--color-brand)' }}>
+                          <AlertTriangle className="w-2.5 h-2.5" />
+                          Actualizar información
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-md text-xs font-semibold flex-shrink-0 ${estadoCfg.className}`}>
+                    {estadoCfg.label}
+                  </span>
+                </div>
+
+                {/* Score */}
+                <ScoreBar score={u.score} />
+
+                {/* Última actividad + campaña asignada */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs" style={{ color: 'var(--color-text-3)' }}>{u.ultimaActividad}</span>
+                  {u.campanasignada ? (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium truncate max-w-[150px]"
+                      style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', border: '1px solid var(--color-brand-border)' }}>
+                      {u.campanasignada}
+                    </span>
+                  ) : (
+                    <span className="text-lg" style={{ color: 'var(--color-border)' }}>—</span>
+                  )}
+                </div>
+
+                {/* Acciones */}
+                <div className="flex items-center justify-end gap-1 pt-1 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                  <button
+                    onClick={e => { e.stopPropagation(); navigate(`/ugcs/${u.id}`); }}
+                    title="Ver perfil"
+                    className="w-11 h-11 flex items-center justify-center rounded-lg transition-all duration-150"
+                    style={{ color: 'var(--color-text-3)' }}
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); navigate(`/ugcs/${u.id}`); }}
+                    title="Ver conversación"
+                    className="w-11 h-11 flex items-center justify-center rounded-lg transition-all duration-150"
+                    style={{ color: 'var(--color-text-3)' }}
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); setPendingDeleteId(u.id); }}
+                    title="Eliminar creador"
+                    className="w-11 h-11 flex items-center justify-center rounded-lg transition-all duration-150"
+                    style={{ color: 'var(--color-text-3)' }}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Footer count */}

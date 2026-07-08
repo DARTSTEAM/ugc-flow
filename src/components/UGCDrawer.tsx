@@ -706,7 +706,7 @@ export default function UGCDrawer({
 
       {/* Drawer */}
       <div
-        className="fixed right-0 top-0 h-full w-full max-w-xl z-50 flex flex-col drawer-enter border-l"
+        className="fixed right-0 top-0 h-dvh w-full max-w-xl z-50 flex flex-col drawer-enter border-l"
         style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-drawer)' }}
       >
 
@@ -797,7 +797,7 @@ export default function UGCDrawer({
                     <button
                       onClick={startProfileEditing}
                       title="Editar perfil"
-                      className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-lg transition-all duration-200"
+                      className="flex-shrink-0 w-11 h-11 flex items-center justify-center rounded-lg transition-all duration-200"
                       style={{ color: 'var(--color-text-3)' }}
                       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
                       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
@@ -839,7 +839,7 @@ export default function UGCDrawer({
               </button>
               <button
                 onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200"
+                className="w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-200"
                 style={{ color: 'var(--color-text-3)' }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
@@ -1418,7 +1418,7 @@ export default function UGCDrawer({
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
-                      <div className="grid grid-cols-2 gap-2.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <FormField label="Views promedio" value={orgViews} onChange={setOrgViews} placeholder="ej: 12500"
                           tooltip="Promedio de reproducciones por video en los últimos posteos orgánicos de campaña." />
                         <FormField label="Shares promedio" value={orgShares} onChange={setOrgShares} placeholder="ej: 340"
@@ -1500,7 +1500,7 @@ export default function UGCDrawer({
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3">
-                      <div className="grid grid-cols-2 gap-2.5">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                         <FormField label="Impresiones" value={pImpresiones} onChange={setPImpresiones} placeholder="ej: 45000"
                           tooltip="Total de veces que se mostró el anuncio, incluyendo repeticiones al mismo usuario." />
                         <FormField label="Alcance" value={pAlcance} onChange={setPAlcance} placeholder="ej: 38000"

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Rocket, Pause, Play, Trash2, Megaphone,
   ChevronDown, ChevronUp, ChevronsUpDown,
-  MessageCircleMore, X, Send, Zap, Loader2, RefreshCw,
+  X, Loader2, RefreshCw,
   Eye, Heart, MessageCircle, Share2, Link2, ExternalLink, AlertTriangle, Activity, HelpCircle, Sparkles, Smile, Users, Check
 } from 'lucide-react';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
@@ -234,9 +235,22 @@ function EstadoSelect({ value, onChange }: { value: EstadoEnCampana; onChange: (
 }
 
 export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, onLanzar, onDeleteCampana, onUpdateEstadoCreador, onGoToChat }: Props) {
-  const [filterEstado, setFilterEstado] = useState<EstadoEnCampana | ''>('');
-  const [sortKey, setSortKey] = useState<SortKey2>('score');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filterEstado = (searchParams.get('estado') as EstadoEnCampana | null) ?? '';
+  const sortKey = (searchParams.get('sort') as SortKey2 | null) ?? 'score';
+  const sortDir = (searchParams.get('dir') as SortDir | null) ?? 'desc';
+
+  function updateParams(patch: Record<string, string | null>) {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      Object.entries(patch).forEach(([k, v]) => {
+        if (v === null || v === '') next.delete(k);
+        else next.set(k, v);
+      });
+      return next;
+    });
+  }
+
   const [showLanzarModal, setShowLanzarModal] = useState(false);
   const [showEnvioModal, setShowEnvioModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -322,8 +336,8 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   };
 
   function handleSort(k: SortKey2) {
-    if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(k); setSortDir('desc'); }
+    if (sortKey === k) updateParams({ sort: k, dir: sortDir === 'asc' ? 'desc' : 'asc' });
+    else updateParams({ sort: k, dir: 'desc' });
   }
   function SortIcon({ col }: { col: SortKey2 }) {
     if (sortKey !== col) return <ChevronsUpDown className="w-3 h-3 opacity-30" />;
@@ -359,11 +373,11 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
         <div className="flex items-start gap-3">
           <button
             onClick={onBack}
-            className="mt-0.5 w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 flex-shrink-0"
+            className="mt-0.5 w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-200 flex-shrink-0"
             style={{ color: 'var(--color-text-3)' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
@@ -379,7 +393,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
             <p className="text-xs font-mono mt-1" style={{ color: 'var(--color-text-3)' }}>{campana.fechaInicio} → {campana.fechaFin}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
           <button
             onClick={() => setShowDeleteConfirm(true)}
             title="Eliminar campaña"
@@ -720,7 +734,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
             <div className="flex flex-col gap-3 pt-4">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <button
-                  onClick={() => setFilterEstado('')}
+                  onClick={() => updateParams({ estado: null })}
                   className="px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap border transition-all duration-150"
                   style={{
                     backgroundColor: 'var(--color-surface-alt)', borderColor: 'var(--color-border)', color: 'var(--color-text-2)',
@@ -735,7 +749,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                   return (
                     <button
                       key={e}
-                      onClick={() => setFilterEstado(isActive ? '' : e)}
+                      onClick={() => updateParams({ estado: isActive ? null : e })}
                       className={`px-2 py-0.5 rounded-md text-[10px] font-semibold whitespace-nowrap transition-all duration-150 ${cfg.className}`}
                       style={{ opacity: filterEstado && !isActive ? 0.45 : 1, boxShadow: isActive ? '0 0 0 1px var(--color-brand)' : 'none' }}
                     >
@@ -745,7 +759,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                 })}
               </div>
 
-              <div className="border rounded-xl overflow-hidden" style={{ borderColor: 'var(--color-border-subtle)' }}>
+              <div className="hidden sm:block border rounded-xl overflow-hidden" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-separate border-spacing-0 min-w-[600px]">
                     <thead style={{ backgroundColor: 'var(--color-surface)' }}>
@@ -823,6 +837,48 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                   </table>
                 </div>
               </div>
+
+              {/* Lista de creadores en cards (mobile, < 640px) */}
+              <div className="sm:hidden flex flex-col gap-2.5">
+                {rows.length === 0 ? (
+                  <p className="py-10 text-center text-sm italic" style={{ color: 'var(--color-text-3)' }}>No hay creadores con este filtro</p>
+                ) : rows.map(({ uc, ugc }) => {
+                  const sc = scoreColor(ugc!.score);
+                  const av = avatarColor(ugc!.id);
+                  return (
+                    <div key={uc.ugcId} className="border rounded-xl p-3 flex flex-col gap-2.5" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface)' }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${av}`}>
+                            {getInitials(ugc!.nombre)}
+                          </div>
+                          <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-1)' }}>{ugc!.nombre}</span>
+                        </div>
+                        <EstadoSelect value={uc.estado} onChange={next => onUpdateEstadoCreador(campana.id, uc.ugcId, next)} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--color-border)' }}>
+                          <div className={`h-full ${sc.bar} rounded-full`} style={{ width: `${ugc!.score}%` }} />
+                        </div>
+                        <span className={`text-xs font-mono font-bold ${sc.text}`}>{ugc!.score}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-xs font-mono" style={{ color: 'var(--color-text-3)' }}>
+                        <span>Envío: {uc.fechaEnvio}</span>
+                        <span>Respuesta: {uc.fechaRespuesta ?? '—'}</span>
+                      </div>
+                      <button
+                        onClick={() => onGoToChat(ugc!)}
+                        title="Ir al chat con este creador"
+                        className="h-11 flex items-center justify-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg transition-all duration-200"
+                        style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)', border: '1px solid var(--color-brand-border)' }}
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        Ir al chat
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -866,7 +922,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                 </div>
                 <button
                   onClick={() => setModalEstado(null)}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors duration-200 flex-shrink-0"
+                  className="w-11 h-11 flex items-center justify-center rounded-lg transition-colors duration-200 flex-shrink-0"
                   style={{ color: 'var(--color-text-3)' }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
@@ -941,106 +997,6 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
         </>
       )}
 
-      {/* Override Bot Modal */}
-      {overrideUGC && (
-        <>
-          <div className="fixed inset-0 z-50 overlay-enter" style={{ backgroundColor: 'rgba(9,10,15,0.45)', backdropFilter: 'blur(4px)' }} onClick={() => setOverrideUGC(null)} />
-          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
-            <div className="rounded-2xl w-full max-w-md pointer-events-auto modal-enter border"
-              style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}>
-              <div className="px-6 pt-5 pb-4 border-b flex items-start justify-between" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-amber-500" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Override del bot</h3>
-                    <p className="text-xs" style={{ color: 'var(--color-text-3)' }}>Contacto directo a <span className="font-semibold" style={{ color: 'var(--color-text-2)' }}>{overrideUGC.nombre}</span></p>
-                  </div>
-                </div>
-                <button onClick={() => setOverrideUGC(null)} className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors duration-200"
-                  style={{ color: 'var(--color-text-3)' }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}>
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="px-6 py-4 flex flex-col gap-4">
-                {overrideSent ? (
-                  <div className="flex flex-col items-center gap-3 py-4 text-center">
-                    <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
-                      <MessageCircleMore className="w-6 h-6 text-emerald-500" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm" style={{ color: 'var(--color-text-1)' }}>Mensaje enviado</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>Tu mensaje fue enviado directamente, sin pasar por el bot.</p>
-                    </div>
-                    <button
-                      onClick={() => setOverrideUGC(null)}
-                      className="mt-2 px-4 py-2 text-white rounded-xl text-sm font-semibold transition-all duration-200"
-                      style={{ backgroundColor: 'var(--color-text-1)' }}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
-                    >
-                      Cerrar
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="p-3 rounded-xl border" style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand-border)' }}>
-                      <p className="text-xs font-medium" style={{ color: 'var(--color-brand-hover)' }}>
-                        ⚡ Este mensaje bypasea al bot y se enviará <strong>directamente por WhatsApp</strong>.
-                        Usalo para casos urgentes o personalizados.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-black uppercase tracking-wider" style={{ color: 'var(--color-text-3)' }}>Mensaje</label>
-                      <textarea
-                        value={overrideMsg}
-                        onChange={e => setOverrideMsg(e.target.value)}
-                        placeholder={`Hola ${overrideUGC.nombre.split(' ')[0]}, te contacto directamente para...`}
-                        rows={4}
-                        autoFocus
-                        className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200 resize-none"
-                        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
-                        onFocus={e => { e.currentTarget.style.borderColor = '#FBBF24'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(251,191,36,0.15)'; }}
-                        onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
-                      />
-                      <p className="text-[10px] font-mono text-right" style={{ color: 'var(--color-text-3)' }}>{overrideMsg.length} chars</p>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => { if (!overrideMsg.trim()) return; setOverrideSent(true); }}
-                        disabled={!overrideMsg.trim()}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-xl font-semibold transition-all duration-200 text-sm disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97]"
-                        style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
-                        onMouseEnter={e => { if (!overrideMsg.trim()) return; (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'; }}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
-                      >
-                        <Send className="w-4 h-4" />
-                        Enviar ahora
-                      </button>
-                      <button
-                        onClick={() => setOverrideUGC(null)}
-                        className="px-4 py-2.5 border rounded-xl font-semibold transition-all duration-200 text-sm"
-                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
-                      >
-                        Cancelar
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
       {/* Lanzar Modal */}
       {showLanzarModal && (
         <>
@@ -1049,8 +1005,8 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
             style={{ backgroundColor: 'rgba(9,10,15,0.45)', backdropFilter: 'blur(4px)' }}
             onClick={() => { if (!isScraping) setShowLanzarModal(false); }}
           />
-          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-            <div className="rounded-2xl p-6 max-w-sm w-full mx-4 pointer-events-auto modal-enter border"
+          <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
+            <div className="rounded-2xl p-6 max-w-sm w-full pointer-events-auto modal-enter border max-h-[90vh] overflow-y-auto"
               style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}>
               <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: 'var(--color-brand-light)' }}>
                 {isScraping

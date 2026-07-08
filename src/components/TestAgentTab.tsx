@@ -239,11 +239,13 @@ export default function TestAgentTab() {
 
   // ── Active chat ──────────────────────────────────────────────────────
   return (
-    <div className="h-full flex overflow-hidden" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+    <div className="h-full flex overflow-y-auto lg:overflow-hidden" style={{ backgroundColor: 'var(--color-bg-app)' }}>
 
-      {/* ── Chat + activity group: centered together as one box once side events arrive ── */}
+      {/* ── Chat + activity group: centered together as one box once side events arrive ──
+           Mobile/tablet: stacked (chat on top, activity panel below, page scrolls to reveal it).
+           Desktop (lg+): side-by-side as before, height locked to the viewport. */}
       <div
-        className="h-full flex gap-6 mx-auto min-w-0"
+        className="flex flex-col lg:flex-row lg:h-full gap-6 mx-auto min-w-0"
         style={{ width: '100%', maxWidth: hasUpdates ? '61.5rem' : '42rem' }}
       >
 
@@ -377,7 +379,7 @@ export default function TestAgentTab() {
               <button
                 onClick={sendMessage}
                 disabled={!canSend}
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-150 active:scale-[0.90] disabled:opacity-30"
+                className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-150 active:scale-[0.90] disabled:opacity-30"
                 style={{ backgroundColor: 'var(--color-brand)', color: '#fff' }}
               >
                 <Send className="w-3.5 h-3.5" />
@@ -393,7 +395,7 @@ export default function TestAgentTab() {
       {/* ── UGC updates panel ────────────────────────────────────────── */}
       {hasUpdates && (
         <div
-          className="w-72 flex-shrink-0 flex flex-col rounded-2xl border overflow-hidden my-4"
+          className="w-full lg:w-72 lg:flex-shrink-0 flex flex-col rounded-2xl border overflow-hidden my-4"
           style={{
             borderColor: 'var(--color-border-subtle)',
             backgroundColor: 'var(--color-surface)',
@@ -444,7 +446,7 @@ export default function TestAgentTab() {
               <h3 className="font-black text-base" style={{ color: 'var(--color-text-1)' }}>Feedback del chat</h3>
               <button
                 onClick={() => setShowFeedback(false)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                className="w-11 h-11 rounded-lg flex items-center justify-center transition-all"
                 style={{ color: 'var(--color-text-3)' }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}

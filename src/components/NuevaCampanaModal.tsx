@@ -179,7 +179,7 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
               </div>
               <button
                 onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200"
+                className="w-11 h-11 flex items-center justify-center rounded-lg transition-all duration-200"
                 style={{ color: 'var(--color-text-3)' }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'; }}
@@ -250,7 +250,7 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                   />
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex flex-col gap-1.5 flex-1">
                     <label className="text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-1"
                       style={{ color: 'var(--color-text-3)' }}>
@@ -299,7 +299,7 @@ export default function NuevaCampanaModal({ onClose, onCrear, ugcs }: Props) {
                   />
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex flex-col gap-1.5 flex-1">
                     <label className="text-[10px] font-black uppercase tracking-[0.15em] flex items-center gap-1"
                       style={{ color: 'var(--color-text-3)' }}>

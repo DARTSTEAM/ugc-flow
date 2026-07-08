@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, MapPin, Users, TrendingUp, Calendar, ArrowRight, Search, Clock, CheckCircle2, FileText, ChevronDown } from 'lucide-react';
 import type { Busqueda, EstadoBusqueda } from './BusquedaDrawer';
 import BusquedaDrawer from './BusquedaDrawer';
@@ -121,7 +122,8 @@ export default function ProspeccionTab() {
   const [busquedas, setBusquedas] = useState<Busqueda[]>(BUSQUEDAS_MOCK);
   const [selected, setSelected] = useState<Busqueda | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [filter, setFilter] = useState<FilterOpt>('Todas');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filter = (searchParams.get('estado') as FilterOpt | null) ?? 'Todas';
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   function handleDeleteBusqueda(id: string) {
@@ -139,7 +141,12 @@ export default function ProspeccionTab() {
   const hasMore = visible.length > visibleCount;
 
   function handleFilterChange(f: FilterOpt) {
-    setFilter(f);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (f === 'Todas') next.delete('estado');
+      else next.set('estado', f);
+      return next;
+    });
     setVisibleCount(PAGE_SIZE);
   }
 
@@ -147,7 +154,7 @@ export default function ProspeccionTab() {
     <div className="h-full flex flex-col gap-5">
 
       {/* ── Stats bar ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: 'Total búsquedas', value: busquedas.length, color: 'var(--color-text-1)',  sub: 'registradas' },
           { label: 'En progreso',     value: enProgreso,        color: '#3b82f6',              sub: 'activas ahora' },
@@ -167,9 +174,9 @@ export default function ProspeccionTab() {
       </div>
 
       {/* ── Toolbar ───────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         {/* Filter pills */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           {(['Todas', 'En progreso', 'Completada', 'Borrador'] as FilterOpt[]).map(f => {
             const isActive = filter === f;
             const cfg = f !== 'Todas' ? ESTADO_CFG[f as EstadoBusqueda] : null;
@@ -224,7 +231,7 @@ export default function ProspeccionTab() {
         </div>
       ) : (
         <>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {paged.map(b => {
             const ecfg = ESTADO_CFG[b.estado];
             const EstadoIcon = ecfg.icon;

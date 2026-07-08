@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Send, MessageSquare, Instagram, Mail, X, Plus,
-  User, Check, AlertCircle, Smile
+  User, Check, AlertCircle, Smile, ArrowLeft
 } from 'lucide-react';
 import type { UGC, Mensaje, Canal } from '../data';
 import { avatarColor, getInitials } from '../utils';
@@ -10,8 +11,10 @@ import { sendCreatorMessage } from '../api';
 interface Props {
   ugcs: UGC[];
   onUpdateUGC: (ugc: UGC) => void;
-  initialUgcId?: string | null;
 }
+
+// Mobile/tablet (<lg) master-detail navigation: only one panel is visible at a time
+type MobilePanel = 'lista' | 'conversacion' | 'perfil';
 
 const CANAL_CONFIG: Record<string, { icon: React.ComponentType<any>; color: string; label: string; bg: string; border: string }> = {
   WhatsApp: { icon: MessageSquare, color: '#16a34a', label: 'WhatsApp', bg: 'rgba(22, 163, 74, 0.08)', border: 'rgba(22, 163, 74, 0.2)' },
@@ -52,17 +55,40 @@ function getUgcLastMsgTime(u: UGC): number {
   return 0; // very old fallback
 }
 
-export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
-  const [selectedUgcId, setSelectedUgcId] = useState<string | null>(initialUgcId ?? null);
+export default function ChatsTab({ ugcs, onUpdateUGC }: Props) {
+  const { ugcId } = useParams<{ ugcId?: string }>();
+  const navigate = useNavigate();
+  const selectedUgcId = ugcId ?? null;
 
-  useEffect(() => {
-    if (initialUgcId) setSelectedUgcId(initialUgcId);
-  }, [initialUgcId]);
-  const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'unread'>('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const search = searchParams.get('q') ?? '';
+  const filterType = (searchParams.get('filter') as 'all' | 'unread' | null) ?? 'all';
+
+  function updateParams(patch: Record<string, string | null>, opts?: { replace?: boolean }) {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      Object.entries(patch).forEach(([k, v]) => {
+        if (v === null || v === '') next.delete(k);
+        else next.set(k, v);
+      });
+      return next;
+    }, opts);
+  }
+
   const [inputText, setInputText] = useState('');
   const [newTagText, setNewTagText] = useState('');
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  // Mobile (<lg) panel navigation: start on the conversation panel when a chat
+  // is already preselected via deep-link (e.g. /chats/:ugcId), otherwise the list.
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>(() => (ugcId ? 'conversacion' : 'lista'));
+
+  // If the selection is cleared (deselect / navigate away from a chat), fall back to the list on mobile
+  useEffect(() => {
+    if (!selectedUgcId) {
+      setMobilePanel('lista');
+    }
+  }, [selectedUgcId]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -163,7 +189,7 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
     <div className="h-full w-full flex overflow-hidden" style={{ backgroundColor: 'var(--color-surface)' }}>
       {/* 1. Chats List Sidebar */}
       <div
-        className="w-80 flex-shrink-0 flex flex-col border-r h-full"
+        className={`${mobilePanel === 'lista' ? 'flex' : 'hidden'} lg:flex flex-col w-full lg:w-80 flex-shrink-0 border-r h-full`}
         style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface)' }}
       >
         {/* Header (Search and Filter Tabs) */}
@@ -173,7 +199,7 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
             <input
               type="text"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={e => updateParams({ q: e.target.value }, { replace: true })}
               placeholder="Buscar conversación..."
               className="w-full pl-9 pr-4 py-2 border rounded-xl text-xs focus:outline-none transition-all duration-200"
               style={{ backgroundColor: 'var(--color-surface-alt)', borderColor: 'var(--color-border)', color: 'var(--color-text-1)' }}
@@ -184,7 +210,7 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
 
           <div className="flex p-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: 'var(--color-surface-alt)' }}>
             <button
-              onClick={() => setFilterType('all')}
+              onClick={() => updateParams({ filter: null })}
               className="flex-1 py-1 px-2 rounded-md transition-all text-center"
               style={filterType === 'all'
                 ? { backgroundColor: 'var(--color-surface)', color: 'var(--color-text-1)', boxShadow: 'var(--shadow-card)' }
@@ -193,7 +219,7 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
               Todos
             </button>
             <button
-              onClick={() => setFilterType('unread')}
+              onClick={() => updateParams({ filter: 'unread' })}
               className="flex-grow py-1 px-2 rounded-md transition-all text-center flex items-center justify-center gap-1.5"
               style={filterType === 'unread'
                 ? { backgroundColor: 'var(--color-surface)', color: 'var(--color-text-1)', boxShadow: 'var(--shadow-card)' }
@@ -228,7 +254,7 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
               return (
                 <button
                   key={u.id}
-                  onClick={() => setSelectedUgcId(u.id)}
+                  onClick={() => { navigate(`/chats/${u.id}`); setMobilePanel('conversacion'); }}
                   className="w-full p-4 border-b flex gap-3 text-left transition-colors duration-150 relative"
                   style={{
                     borderColor: 'var(--color-border-subtle)',
@@ -293,40 +319,56 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
       </div>
 
       {/* 2. Chat Pane and User Profiles details */}
-      <div className="flex-grow flex h-full">
+      <div className={`${mobilePanel === 'lista' ? 'hidden' : 'flex'} lg:flex flex-grow h-full`}>
         {activeUgc ? (
           <>
             {/* Active Chat Conversation Pane */}
-            <div className="flex-grow flex flex-col h-full relative" style={{ backgroundColor: 'var(--color-bg-app)' }}>
+            <div className={`${mobilePanel === 'conversacion' ? 'flex' : 'hidden'} lg:flex flex-col flex-grow h-full relative`} style={{ backgroundColor: 'var(--color-bg-app)' }}>
               {/* Header Info */}
               <div
                 className="px-6 py-4 border-b flex items-center justify-between flex-shrink-0"
                 style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}
               >
-                <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold ${avatarColor(activeUgc.id)}`}>
-                    {getInitials(activeUgc.nombre)}
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black" style={{ color: 'var(--color-text-1)' }}>
-                      {activeUgc.nombre}
-                    </h4>
-                    {/* Badge indicating channel source */}
-                    <div
-                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold mt-0.5 border"
-                      style={{
-                        backgroundColor: getCanalConfig(activeUgc.canal).bg,
-                        borderColor: getCanalConfig(activeUgc.canal).border,
-                        color: getCanalConfig(activeUgc.canal).color
-                      }}
-                    >
-                      {(() => {
-                        const CIcon = getCanalConfig(activeUgc.canal).icon;
-                        return <CIcon className="w-2.5 h-2.5" />;
-                      })()}
-                      Conectado vía {getCanalConfig(activeUgc.canal).label}
+                <div className="flex items-center gap-1 min-w-0">
+                  {/* Back to chats list (mobile/tablet only) */}
+                  <button
+                    type="button"
+                    onClick={() => setMobilePanel('lista')}
+                    className="lg:hidden w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-xl transition-colors -ml-1.5"
+                    style={{ color: 'var(--color-text-2)' }}
+                    aria-label="Volver a la lista de chats"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobilePanel('perfil')}
+                    className="flex items-center gap-3 min-w-0 text-left"
+                  >
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${avatarColor(activeUgc.id)}`}>
+                      {getInitials(activeUgc.nombre)}
                     </div>
-                  </div>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-black truncate" style={{ color: 'var(--color-text-1)' }}>
+                        {activeUgc.nombre}
+                      </h4>
+                      {/* Badge indicating channel source */}
+                      <div
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold mt-0.5 border"
+                        style={{
+                          backgroundColor: getCanalConfig(activeUgc.canal).bg,
+                          borderColor: getCanalConfig(activeUgc.canal).border,
+                          color: getCanalConfig(activeUgc.canal).color
+                        }}
+                      >
+                        {(() => {
+                          const CIcon = getCanalConfig(activeUgc.canal).icon;
+                          return <CIcon className="w-2.5 h-2.5" />;
+                        })()}
+                        Conectado vía {getCanalConfig(activeUgc.canal).label}
+                      </div>
+                    </div>
+                  </button>
                 </div>
               </div>
 
@@ -397,7 +439,7 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
                   <button
                     type="submit"
                     disabled={!inputText.trim()}
-                    className="w-10 h-10 flex items-center justify-center rounded-xl text-white transition-all duration-200 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-xl text-white transition-all duration-200 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
                   >
                     <Send className="w-4 h-4" />
@@ -408,9 +450,20 @@ export default function ChatsTab({ ugcs, onUpdateUGC, initialUgcId }: Props) {
 
             {/* Sidebar details (Bio & Tags Administration) */}
             <div
-              className="w-72 flex-shrink-0 border-l h-full flex flex-col p-5 overflow-y-auto"
+              className={`${mobilePanel === 'perfil' ? 'flex' : 'hidden'} lg:flex flex-col w-full lg:w-72 flex-shrink-0 border-l h-full p-5 overflow-y-auto`}
               style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border-subtle)' }}
             >
+              {/* Back to conversation (mobile/tablet only) */}
+              <button
+                type="button"
+                onClick={() => setMobilePanel('conversacion')}
+                className="lg:hidden w-11 h-11 -ml-2 -mt-1 mb-1 flex-shrink-0 flex items-center justify-center rounded-xl transition-colors self-start"
+                style={{ color: 'var(--color-text-2)' }}
+                aria-label="Volver a la conversación"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+
               {/* Profile Card Header */}
               <div className="flex flex-col items-center text-center pb-5 border-b gap-2.5" style={{ borderColor: 'var(--color-border-subtle)' }}>
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold ${avatarColor(activeUgc.id)}`}>

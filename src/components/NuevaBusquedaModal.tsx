@@ -103,7 +103,7 @@ export default function NuevaBusquedaModal({ onClose }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
+            className="w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
             style={{ color: 'var(--color-text-3)' }}
             onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-surface-alt)')}
             onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
@@ -224,7 +224,7 @@ export default function NuevaBusquedaModal({ onClose }: Props) {
               {/* Followers range */}
               <div>
                 {fieldLabel('Rango de seguidores')}
-                <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="flex-1">
                     <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-3)' }}>Mínimo</p>
                     <input
@@ -237,7 +237,7 @@ export default function NuevaBusquedaModal({ onClose }: Props) {
                       style={inputStyle(focused.segMin)}
                     />
                   </div>
-                  <span className="text-base font-bold mt-4" style={{ color: 'var(--color-text-3)' }}>—</span>
+                  <span className="hidden sm:inline text-base font-bold sm:mt-4" style={{ color: 'var(--color-text-3)' }}>—</span>
                   <div className="flex-1">
                     <p className="text-[10px] mb-1" style={{ color: 'var(--color-text-3)' }}>Máximo</p>
                     <input
@@ -253,7 +253,7 @@ export default function NuevaBusquedaModal({ onClose }: Props) {
                 </div>
               </div>
               {/* Engagement + Idioma */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   {fieldLabel('Engagement mínimo')}
                   <div className="relative">

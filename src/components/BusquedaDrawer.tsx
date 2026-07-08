@@ -94,7 +94,7 @@ export default function BusquedaDrawer({ busqueda, onClose, onDelete }: Props) {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-[580px] h-full flex flex-col drawer-enter"
+        className="w-full sm:w-[580px] h-dvh flex flex-col drawer-enter"
         style={{ backgroundColor: 'var(--color-bg-app)', boxShadow: 'var(--shadow-drawer)' }}
       >
         {/* ── Drawer header ──────────────────────────────────── */}
@@ -129,7 +129,7 @@ export default function BusquedaDrawer({ busqueda, onClose, onDelete }: Props) {
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 title="Eliminar búsqueda"
-                className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
+                className="w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
                 style={{ color: '#e11d48', backgroundColor: '#fff1f2' }}
                 onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#ffe4e6')}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#fff1f2')}
@@ -139,7 +139,7 @@ export default function BusquedaDrawer({ busqueda, onClose, onDelete }: Props) {
             )}
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
+              className="w-11 h-11 flex items-center justify-center rounded-xl transition-all duration-200 active:scale-[0.92]"
               style={{ color: 'var(--color-text-3)' }}
               onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--color-surface-alt)')}
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
@@ -159,7 +159,7 @@ export default function BusquedaDrawer({ busqueda, onClose, onDelete }: Props) {
             </p>
 
             {/* 3 stat mini-cards */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
               {[
                 { icon: Users,     label: 'Seguidores',  value: `${fmtNum(busqueda.seguidoresMin)} – ${fmtNum(busqueda.seguidoresMax)}` },
                 { icon: TrendingUp,label: 'Engagement',  value: `≥ ${busqueda.engagementMin}%` },

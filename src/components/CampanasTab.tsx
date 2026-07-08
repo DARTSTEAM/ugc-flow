@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Rocket, ChevronDown, ArrowUpRight } from 'lucide-react';
 import type { Campana, EstadoCampana, UGC } from '../data';
 import { ESTADO_CAMPANA_CONFIG } from '../utils';
@@ -48,7 +49,7 @@ function CampanaCard({ campana, cardBg, cardBorder, onSelect }: {
   return (
     <div
       onClick={onSelect}
-      className="border rounded-2xl p-5 flex flex-col gap-4 cursor-pointer select-none"
+      className="@container border rounded-2xl p-5 flex flex-col gap-4 cursor-pointer select-none"
       style={{
         backgroundColor: cardBg,
         borderColor: hovered ? 'var(--color-brand)' : cardBorder,
@@ -82,17 +83,18 @@ function CampanaCard({ campana, cardBg, cardBorder, onSelect }: {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="flex gap-2">
+      {/* Stats — 4 en una fila si el ancho real de la card lo permite (container query),
+          si no, 2 arriba y 2 abajo para que nunca se corten ni se salgan del borde. */}
+      <div className="grid grid-cols-2 @md:grid-cols-4 gap-2">
         {[
           { label: 'Pendientes',       value: pendientes },
           { label: 'Activos',          value: activos },
           { label: 'En Negociación',   value: enNegociacion },
           { label: 'Descartados',      value: descartados },
         ].map(s => (
-          <div key={s.label} className="flex-1 p-2 rounded-xl text-center" style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}>
-            <p className="text-base font-black font-mono" style={{ color: '#111827' }}>{s.value}</p>
-            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: '#6b7280' }}>{s.label}</p>
+          <div key={s.label} className="min-w-0 p-2 rounded-xl text-center" style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}>
+            <p className="text-base font-black font-mono truncate" style={{ color: '#111827' }}>{s.value}</p>
+            <p className="text-[9px] font-bold uppercase tracking-wider truncate" style={{ color: '#6b7280' }}>{s.label}</p>
           </div>
         ))}
       </div>
@@ -105,7 +107,8 @@ function CampanaCard({ campana, cardBg, cardBorder, onSelect }: {
 }
 
 export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }: Props) {
-  const [filter, setFilter]           = useState<FilterCampana>('Todas');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filter = (searchParams.get('estado') as FilterCampana | null) ?? 'Todas';
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const filtered =
@@ -122,7 +125,12 @@ export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }:
   const totalActivosCreadores = campanas.flatMap(c => c.ugcs).filter(u => u.estado === 'Activo').length;
 
   function handleFilterChange(f: FilterCampana) {
-    setFilter(f);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (f === 'Todas') next.delete('estado');
+      else next.set('estado', f);
+      return next;
+    });
     setVisibleCount(PAGE_SIZE);
   }
 
@@ -154,7 +162,7 @@ export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }:
     <div className="flex flex-col gap-5">
 
       {/* ── Stats bar ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: 'Total campañas',        value: campanas.length,          color: 'var(--color-text-1)', sub: 'registradas' },
           { label: 'Activas',               value: totalActivas,             color: '#10b981',             sub: 'en curso ahora' },
@@ -174,9 +182,9 @@ export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }:
       </div>
 
       {/* ── Toolbar ───────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         {/* Filter pills */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           {(['Todas', 'Activas', 'Borradores', 'Cerradas'] as FilterCampana[]).map(f => {
             const isActive = filter === f;
             const cfg = f !== 'Todas' ? FILTER_PILL_COLORS[f] : null;
@@ -228,7 +236,7 @@ export default function CampanasTab({ campanas, onSelectCampana, onAddCampana }:
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {paged.map(c => {
               const colors = CAMPANA_CARD_COLORS[c.estado];
               return (

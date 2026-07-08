@@ -19,7 +19,8 @@
     "lucide-react": "^0.477.0",
     "playwright-core": "^1.52.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.18.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.7",

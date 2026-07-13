@@ -22,7 +22,7 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--project=hike-agentic-playground'
-      - '--update-secrets=MINIMAX_API_KEY=ngr_ugc_minimax_api_key:latest'
+      - '--update-secrets=MINIMAX_API_KEY=ngr_ugc_minimax_api_key:latest,N8N_WEBHOOK_URL=ngr_ugc_n8n_webhook_url:latest,N8N_AUTH_VALUE=ngr_ugc_n8n_auth_value:latest'
 
 images:
   - 'us-central1-docker.pkg.dev/hike-agentic-playground/mcp-cloud-run-deployments/ugc-flow:$COMMIT_SHA'

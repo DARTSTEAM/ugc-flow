@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, NavLink, useNavigate, useLocation, useMatch, useParams } from 'react-router-dom';
 import { Users, Megaphone, ChevronRight, MessageSquare, ScanSearch, Star, BrainCircuit, Menu, X } from 'lucide-react';
 import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign, assignCreatorToCampaign, deleteCampaign, updateCreatorCampaignStatus, fetchProfile } from './api';
@@ -13,6 +13,7 @@ import RecomendacionesTab from './components/RecomendacionesTab';
 import TestAgentTab from './components/TestAgentTab';
 import UserProfileMenu from './components/UserProfileMenu';
 import ProfileView from './components/ProfileView';
+import ChatsDisclaimerModal from './components/ChatsDisclaimerModal';
 import logoNgr from './assets/Logo-ngr.png';
 
 export const FALLBACK_PROFILE: UserProfile = { id: 'user-001', nombre: 'Bautista', area: 'Marketing', email: null, fotoUrl: null };
@@ -21,9 +22,9 @@ type TabId = 'ugcs' | 'campanas' | 'chats' | 'prospeccion' | 'recomendaciones' |
 
 const NAV_ITEMS = [
   { id: 'ugcs' as TabId,             path: '/ugcs',          label: 'UGCs Activos',    icon: Users },
-  { id: 'prospeccion' as TabId,      path: '/prospeccion',   label: 'Prospección',     icon: ScanSearch },
   { id: 'campanas' as TabId,         path: '/campanas',      label: 'Campañas',        icon: Megaphone },
   { id: 'chats' as TabId,            path: '/chats',         label: 'Chats',           icon: MessageSquare },
+  { id: 'prospeccion' as TabId,      path: '/prospeccion',   label: 'Prospección',     icon: ScanSearch },
   { id: 'recomendaciones' as TabId,  path: '/recomendaciones', label: 'Recomendaciones', icon: Star },
   { id: 'testagent' as TabId,        path: '/testagent',     label: 'Test Agent',      icon: BrainCircuit },
 ];
@@ -96,6 +97,17 @@ export default function App() {
 
   // Close the mobile drawer automatically on every navigation
   useEffect(() => { setMobileNavOpen(false); }, [location.pathname]);
+
+  // Chats disclaimer: show on every entry into the Chats section (not on every
+  // conversation switch within it, since that would fire on each chat click)
+  const [showChatsDisclaimer, setShowChatsDisclaimer] = useState(false);
+  const prevSectionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (section === 'chats' && prevSectionRef.current !== 'chats') {
+      setShowChatsDisclaimer(true);
+    }
+    prevSectionRef.current = section;
+  }, [section]);
 
   function goToChat(ugc: UGC) {
     navigate(`/chats/${ugc.id}`);
@@ -232,9 +244,6 @@ export default function App() {
       console.error('Failed to create campaign:', err);
     }
   }
-
-  const calificados = ugcs.filter(u => u.estado === 'Calificado').length;
-  const activas = campanas.filter(c => c.estado === 'Activa').length;
 
   // ── Loading state ────────────────────────────────────────────────
   if (loading) {
@@ -424,25 +433,6 @@ export default function App() {
               </NavLink>
             );
           })}
-
-          {/* Quick stats */}
-          <div className="mt-6 px-2">
-            <p className="text-[9px] font-black uppercase tracking-[0.2em] mb-3" style={{ color: 'var(--color-text-3)' }}>Resumen</p>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>Calificados</span>
-                <span className="text-xs font-mono font-bold text-emerald-600">{calificados}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>Campañas activas</span>
-                <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-brand)' }}>{activas}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>Total UGCs</span>
-                <span className="text-xs font-mono font-bold" style={{ color: 'var(--color-text-2)' }}>{ugcs.length}</span>
-              </div>
-            </div>
-          </div>
         </nav>
 
         {/* User at bottom */}
@@ -529,7 +519,7 @@ export default function App() {
               setDark={setDark}
               profile={profile}
               onOpenProfile={() => navigate('/perfil')}
-              active={isPerfil}
+              active={false}
               variant="header"
             />
           </div>
@@ -601,6 +591,13 @@ export default function App() {
           onClose={() => setShowNuevaCampana(false)}
           onCrear={handleCrearCampana}
           ugcs={ugcs}
+        />
+      )}
+
+      {showChatsDisclaimer && (
+        <ChatsDisclaimerModal
+          onClose={() => setShowChatsDisclaimer(false)}
+          onTestAgent={() => { setShowChatsDisclaimer(false); navigate('/testagent'); }}
         />
       )}
     </div>

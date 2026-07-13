@@ -6,11 +6,11 @@ interface Message {
   content: string;
 }
 
-type SideEventType = 'ugc_update' | 'human_handoff';
+type SideEventType = 'ugc_update' | 'human_handoff' | 'user_feedback';
 
 interface SideEvent {
   type: SideEventType;
-  fields: Record<string, string>;
+  fields: Record<string, string | null>;
   timestamp: string;
 }
 
@@ -24,34 +24,37 @@ function formatTime(iso: string) {
   }
 }
 
+const SIDE_EVENT_CONFIG: Record<SideEventType, { border: string; iconBg: string; textColor: string; label: string; Icon: typeof Check }> = {
+  human_handoff: { border: '#fdba74', iconBg: 'bg-orange-400', textColor: 'text-orange-500', label: 'Derivado con un humano', Icon: UserCheck },
+  ugc_update: { border: '#86efac', iconBg: 'bg-emerald-500', textColor: 'text-emerald-600', label: 'Información actualizada correctamente', Icon: Check },
+  user_feedback: { border: '#fca5a5', iconBg: 'bg-red-500', textColor: 'text-red-600', label: 'Feedback enviado por el usuario', Icon: MessageCircle },
+};
+
 function SideEventCard({ event, index }: { event: SideEvent; index: number }) {
-  const entries = Object.entries(event.fields);
-  const isHandoff = event.type === 'human_handoff';
+  const entries = Object.entries(event.fields).filter(([, value]) => value !== null);
+  const isFeedback = event.type === 'user_feedback';
+  const { border, iconBg, textColor, label, Icon } = SIDE_EVENT_CONFIG[event.type];
 
   return (
     <div
       className="rounded-xl border p-3"
       style={{
         backgroundColor: 'var(--color-surface)',
-        borderColor: isHandoff ? '#fdba74' : '#86efac',
+        borderColor: border,
         animation: `msgSlideIn 0.25s ease-out ${index * 0.05}s both`,
       }}
     >
       <div className="flex items-center gap-2 mb-2.5">
-        {isHandoff ? (
-          <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 bg-orange-400">
-            <UserCheck className="w-3 h-3 text-white" strokeWidth={2.5} />
-          </div>
-        ) : (
-          <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 bg-emerald-500">
-            <Check className="w-3 h-3 text-white" strokeWidth={3} />
-          </div>
-        )}
-        <span className={`text-xs font-bold ${isHandoff ? 'text-orange-500' : 'text-emerald-600'}`}>
-          {isHandoff ? 'Derivado con un humano' : 'Información actualizada correctamente'}
-        </span>
+        <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+          <Icon className="w-3 h-3 text-white" strokeWidth={2.5} />
+        </div>
+        <span className={`text-xs font-bold ${textColor}`}>{label}</span>
       </div>
-      {entries.length > 0 && (
+      {isFeedback ? (
+        <p className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--color-text-1)' }}>
+          "{event.fields.feedback}"
+        </p>
+      ) : entries.length > 0 && (
         <div className="space-y-1">
           {entries.map(([key, value]) => (
             <div key={key} className="flex gap-1.5 text-xs">
@@ -196,6 +199,10 @@ export default function TestAgentTab() {
         body: JSON.stringify({ feedback: feedbackText }),
       });
       if (!res.ok) throw new Error('Error al guardar el feedback');
+      setSideEvents(prev => [
+        ...prev,
+        { type: 'user_feedback', fields: { feedback: feedbackText }, timestamp: new Date().toISOString() },
+      ]);
       setFeedbackState('sent');
       setTimeout(() => setShowFeedback(false), 1800);
     } catch (err) {

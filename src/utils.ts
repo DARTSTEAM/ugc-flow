@@ -23,11 +23,11 @@ export function scoreColor(score: number) {
 // ─── Badge configs ──────────────────────────────────────────────────────────
 
 export const ESTADO_UGC_CONFIG: Record<EstadoUGC, { label: string; className: string }> = {
-  Nuevo:      { label: 'Nuevo',      className: 'bg-stone-100 dark:bg-stone-300/10 text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-300/20' },
-  Contactado: { label: 'Contactado', className: 'bg-blue-50 dark:bg-blue-300/10 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-300/20' },
-  Respondió:  { label: 'Respondió',  className: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-300/20' },
-  Calificado: { label: 'Calificado', className: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-300/20' },
-  Descartado: { label: 'Descartado', className: 'bg-rose-50 dark:bg-rose-300/10 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-300/20' },
+  Pendiente:        { label: 'Pendiente',       className: 'bg-stone-100 dark:bg-stone-300/10 text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-300/20' },
+  'En Negociación': { label: 'En Negociación',  className: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-300/20' },
+  Activo:           { label: 'Activo',          className: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-300/20' },
+  Descartado:       { label: 'Descartado',      className: 'bg-rose-50 dark:bg-rose-300/10 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-300/20' },
+  Inactivo:         { label: 'Inactivo',        className: 'bg-slate-100 dark:bg-slate-400/10 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-400/20' },
 };
 
 export const CANAL_CONFIG: Record<Canal, { label: string; className: string; dot: string }> = {

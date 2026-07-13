@@ -199,6 +199,90 @@ export async function scrapeTikTokProfiles(creatorIds) {
 }
 
 /**
+ * Refresh on-demand para Recomendaciones: re-scrapea el watchlist (Activo / En
+ * Negociación / Inactivo) y guarda una foto fechada de sus métricas en
+ * creator_metric_snapshots, además de actualizar creators como siempre.
+ *
+ * IG y TikTok corren SECUENCIALMENTE, no en paralelo: scrapeCreatorProfiles y
+ * scrapeTikTokProfiles llaman closeAllBrowsers() en su `finally`, y esa función
+ * cierra TODOS los browsers del pool (no sólo el de la plataforma que terminó) —
+ * correrlos en paralelo mataría la sesión del otro a mitad de scrape.
+ *
+ * @param {string[]} creatorIds
+ * @param {string} runId
+ * @returns {{ igResult: object, ttResult: object, snapshotted: string[] }}
+ */
+export async function refreshWatchlistSnapshots(creatorIds, runId) {
+  if (!creatorIds.length) return { igResult: null, ttResult: null, snapshotted: [] };
+
+  const igResult = await scrapeCreatorProfiles(creatorIds);
+  const ttResult = await scrapeTikTokProfiles(creatorIds);
+
+  const succeeded = [...new Set([...igResult.success, ...ttResult.success])];
+  if (!succeeded.length) return { igResult, ttResult, snapshotted: [] };
+
+  const placeholders = succeeded.map((_, i) => `@id${i}`).join(', ');
+  const params = Object.fromEntries(succeeded.map((id, i) => [`id${i}`, id]));
+
+  const [rows] = await bq.query({
+    query: `
+      SELECT creator_id,
+             eval_perfil_seguidores, eval_perfil_engagement_rate_cuenta, eval_perfil_promedio_vistas,
+             eval_perfil_frecuencia_semanal, eval_perfil_videos_virales,
+             tiktok_eval_seguidores, tiktok_eval_engagement_rate, tiktok_eval_promedio_vistas,
+             tiktok_eval_frecuencia_semanal, tiktok_eval_videos_virales,
+             score
+      FROM ${DATASET}.creators WHERE creator_id IN (${placeholders})
+    `,
+    params,
+    location: 'US',
+  });
+
+  const snapshotted = [];
+  for (const r of rows) {
+    const snapshotId = `snp_${runId}_${r.creator_id}`;
+    await bq.query({
+      query: `
+        INSERT INTO ${DATASET}.creator_metric_snapshots (
+          snapshot_id, run_id, creator_id, captured_at,
+          ig_seguidores, ig_engagement_rate, ig_promedio_vistas, ig_frecuencia_semanal, ig_videos_virales,
+          tt_seguidores, tt_engagement_rate, tt_promedio_vistas, tt_frecuencia_semanal, tt_videos_virales,
+          score, created_at
+        ) VALUES (
+          @snapshotId, @runId, @creatorId, CURRENT_TIMESTAMP(),
+          @igSeguidores, @igEr, @igVistas, @igFrecuencia, @igVirales,
+          @ttSeguidores, @ttEr, @ttVistas, @ttFrecuencia, @ttVirales,
+          @score, CURRENT_TIMESTAMP()
+        )
+      `,
+      params: {
+        snapshotId, runId, creatorId: r.creator_id,
+        igSeguidores: r.eval_perfil_seguidores ?? null,
+        igEr: r.eval_perfil_engagement_rate_cuenta ?? null,
+        igVistas: r.eval_perfil_promedio_vistas ?? null,
+        igFrecuencia: r.eval_perfil_frecuencia_semanal ?? null,
+        igVirales: r.eval_perfil_videos_virales ?? null,
+        ttSeguidores: r.tiktok_eval_seguidores ?? null,
+        ttEr: r.tiktok_eval_engagement_rate ?? null,
+        ttVistas: r.tiktok_eval_promedio_vistas ?? null,
+        ttFrecuencia: r.tiktok_eval_frecuencia_semanal ?? null,
+        ttVirales: r.tiktok_eval_videos_virales ?? null,
+        score: r.score ?? null,
+      },
+      types: {
+        igSeguidores: 'INT64', igEr: 'FLOAT64', igVistas: 'INT64', igFrecuencia: 'FLOAT64', igVirales: 'INT64',
+        ttSeguidores: 'INT64', ttEr: 'FLOAT64', ttVistas: 'INT64', ttFrecuencia: 'FLOAT64', ttVirales: 'INT64',
+        score: 'INT64',
+      },
+      location: 'US',
+    });
+    snapshotted.push(r.creator_id);
+  }
+
+  return { igResult, ttResult, snapshotted };
+}
+
+/**
  * Scrapea las métricas públicas de cada pieza de contenido cargada para una campaña
  * y las escribe en `campaign_content`. La atribución ya está resuelta (cada fila
  * tiene la URL exacta del posteo), así que esto sólo lee stats por permalink.

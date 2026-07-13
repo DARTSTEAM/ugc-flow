@@ -3,10 +3,14 @@ import { pathToFileURL } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import { BigQuery } from '@google-cloud/bigquery';
-import { scrapeCreatorProfiles, scrapeTikTokProfiles, scrapeCampaignContent } from './kernel/index.js';
+import { scrapeCreatorProfiles, scrapeTikTokProfiles, scrapeCampaignContent, refreshWatchlistSnapshots } from './kernel/index.js';
 import { detectPlatform } from './kernel/scrapers/content-post.js';
 import { recalcularScore } from './score-service.js';
 import { computeCampaignMetrics } from './metrics-service.js';
+import {
+  getRecomendaciones, getRefreshGateStatus, getWatchlistCreatorIds,
+  startRefreshRun, completeRefreshRun, failRefreshRun,
+} from './recommendation-service.js';
 
 const app = express();
 app.use(cors());
@@ -62,6 +66,34 @@ const DEFAULT_ETIQUETAS = [
 const STATUS_TO_ES = { active: 'Activa', draft: 'Borrador', completed: 'Cerrada', paused: 'Pausada' };
 const STATUS_TO_EN = { Activa: 'active', Borrador: 'draft', Cerrada: 'completed', Pausada: 'paused' };
 
+// Estado de relación del creador (independiente del estado por-campaña en campaign_creators).
+const ESTADOS_CREATOR = ['Pendiente', 'Activo', 'En Negociación', 'Descartado', 'Inactivo'];
+
+/**
+ * Recalcula si alguno de los creadores `Activo`/`En Negociación` en una campaña que
+ * acaba de cerrarse (status → 'completed') se queda sin ninguna otra asignación viva
+ * en otra campaña — de ser así, pasa su `creators.estado` a 'Inactivo'. Nunca pisa
+ * 'Descartado'. Sigue siendo editable a mano después desde UGCDrawer.
+ */
+async function marcarInactivosPorCierre(campaignId) {
+  await q(`
+    UPDATE \`${DATASET}.creators\` AS c
+    SET c.estado = 'Inactivo', c.updated_at = CURRENT_TIMESTAMP()
+    WHERE c.estado != 'Descartado'
+      AND EXISTS (
+        SELECT 1 FROM ${DATASET}.campaign_creators cc
+        WHERE cc.creator_id = c.creator_id AND cc.campaign_id = @campaignId AND cc.estado = 'Activo'
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM ${DATASET}.campaign_creators cc2
+        JOIN ${DATASET}.campaigns c2 ON cc2.campaign_id = c2.campaign_id
+        WHERE cc2.creator_id = c.creator_id
+          AND cc2.estado IN ('Activo', 'En Negociación')
+          AND c2.status != 'completed'
+      )
+  `, { campaignId });
+}
+
 // ─── GET /api/creators ──────────────────────────────────────────────
 app.get('/api/creators', async (req, res) => {
   try {
@@ -95,7 +127,7 @@ app.get('/api/creators', async (req, res) => {
       id: c.creator_id,
       nombre: c.full_name || c.username || c.creator_id,
       canal: c.canal || c.platform || 'TikTok',
-      estado: c.estado || 'Nuevo',
+      estado: c.estado || 'Pendiente',
       score: c.score || 0,
       ultimaActividad: c.ultima_actividad || '',
       campanasignada: c.campana_asignada || null,
@@ -178,7 +210,7 @@ app.get('/api/creators/:id', async (req, res) => {
       nombre: c.full_name,
       username: c.username ?? null,
       canal: c.canal || 'Instagram',
-      estado: c.estado || 'Nuevo',
+      estado: c.estado || 'Pendiente',
       score: c.score || 0,
       ultimaActividad: c.ultima_actividad || '',
       campanasignada: c.campana_asignada || null,
@@ -218,6 +250,10 @@ app.put('/api/creators/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { nombre, canal, estado, score, bio, campanasignada, seguidores, username, etiquetas, usernameTiktok } = req.body;
+
+    if (!ESTADOS_CREATOR.includes(estado)) {
+      return res.status(400).json({ error: `estado inválido: ${estado}` });
+    }
 
     await q(`
       UPDATE ${DATASET}.creators SET
@@ -329,6 +365,66 @@ app.get('/api/etiquetas', async (req, res) => {
   }
 });
 
+// ─── GET /api/recomendaciones ───────────────────────────────────────
+app.get('/api/recomendaciones', async (req, res) => {
+  try {
+    res.json(await getRecomendaciones());
+  } catch (err) {
+    console.error('GET /api/recomendaciones error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/recomendaciones/refresh ──────────────────────────────
+// Refresh on-demand del watchlist (Activo/Inactivo/En Negociación) que alimenta
+// la sección "En alza". Gate de 24hs + mutex — ver recommendation-service.js.
+app.post('/api/recomendaciones/refresh', async (req, res) => {
+  try {
+    const gate = await getRefreshGateStatus();
+    if (gate.status === 'running') {
+      return res.status(409).json({ error: 'refresh_in_progress', runId: gate.runId, startedAt: gate.startedAt });
+    }
+    if (gate.status === 'cooldown') {
+      return res.status(409).json({ error: 'cooldown', nextEligibleAt: gate.nextEligibleAt });
+    }
+
+    const creatorIds = await getWatchlistCreatorIds();
+    if (!creatorIds.length) {
+      return res.status(409).json({ error: 'empty_watchlist' });
+    }
+
+    const runId = await startRefreshRun(creatorIds.length);
+    res.status(202).json({ ok: true, runId, startedAt: new Date().toISOString(), creatorsCount: creatorIds.length });
+
+    // Fire-and-forget — la respuesta ya se envió, esto sigue en background.
+    (async () => {
+      try {
+        const result = await refreshWatchlistSnapshots(creatorIds, runId);
+        await completeRefreshRun(runId, {
+          successCount: result.snapshotted.length,
+          failedCount: creatorIds.length - result.snapshotted.length,
+        });
+      } catch (err) {
+        console.error(`[Recomendaciones] run ${runId} falló:`, err);
+        await failRefreshRun(runId, err.message);
+      }
+    })();
+  } catch (err) {
+    console.error('POST /api/recomendaciones/refresh error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/recomendaciones/refresh-status ────────────────────────
+app.get('/api/recomendaciones/refresh-status', async (req, res) => {
+  try {
+    res.json(await getRefreshGateStatus());
+  } catch (err) {
+    console.error('GET /api/recomendaciones/refresh-status error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── GET /api/campaigns ─────────────────────────────────────────────
 app.get('/api/campaigns', async (req, res) => {
   try {
@@ -371,7 +467,19 @@ app.put('/api/campaigns/:id', async (req, res) => {
     const { id } = req.params;
     const { estado } = req.body;
     const status = STATUS_TO_EN[estado] || estado;
+
+    const prevRows = await q(`SELECT status FROM ${DATASET}.campaigns WHERE campaign_id = @id`, { id });
+    const prevStatus = prevRows[0]?.status;
+
     await q(`UPDATE ${DATASET}.campaigns SET status = @status WHERE campaign_id = @id`, { id, status });
+
+    // Sólo en la transición → completed (no en cada re-save de una campaña ya cerrada)
+    if (status === 'completed' && prevStatus !== 'completed') {
+      await marcarInactivosPorCierre(id).catch(err =>
+        console.warn(`[Recomendaciones] marcarInactivosPorCierre falló para campaña ${id}:`, err.message)
+      );
+    }
+
     res.json({ ok: true });
   } catch (err) {
     console.error('PUT /api/campaigns/:id error:', err);
@@ -666,6 +774,16 @@ app.patch('/api/campaigns/:id/creators/:creatorId', async (req, res) => {
       `UPDATE ${DATASET}.campaign_creators SET estado = @estado WHERE campaign_id = @id AND creator_id = @creatorId`,
       { id, creatorId, estado }
     );
+
+    // Reversión simétrica al hook de cierre: un ex-colaborador Inactivo que se
+    // reconfirma Activo en una campaña nueva vuelve a estar Activo a nivel creador.
+    if (estado === 'Activo') {
+      await q(
+        `UPDATE ${DATASET}.creators SET estado = 'Activo', updated_at = CURRENT_TIMESTAMP() WHERE creator_id = @creatorId AND estado = 'Inactivo'`,
+        { creatorId }
+      ).catch(err => console.warn(`[Recomendaciones] reversión Inactivo→Activo falló para ${creatorId}:`, err.message));
+    }
+
     res.json({ ok: true });
   } catch (err) {
     console.error('PATCH /api/campaigns/:id/creators/:creatorId error:', err);

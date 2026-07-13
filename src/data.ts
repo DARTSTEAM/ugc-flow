@@ -1,7 +1,7 @@
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type Canal = 'WhatsApp' | 'Instagram' | 'Email';
-export type EstadoUGC = 'Nuevo' | 'Contactado' | 'Respondió' | 'Calificado' | 'Descartado';
+export type EstadoUGC = 'Pendiente' | 'Activo' | 'En Negociación' | 'Descartado' | 'Inactivo';
 export type EstadoCampana = 'Borrador' | 'Activa' | 'Pausada' | 'Cerrada';
 export type EstadoEnCampana = 'Pendiente' | 'Activo' | 'En Negociación' | 'Descartado';
 
@@ -182,6 +182,76 @@ export interface Campana {
   ugcs: UGCEnCampana[];
   marca?: string;
   mensajeContacto?: string;  // template de WhatsApp para outreach masivo
+}
+
+// ─── Recomendaciones ──────────────────────────────────────────────────────────
+
+export interface PerfilGanador {
+  etiquetas: string[];
+  categoria: string | null;
+  seguidoresTier: string | null;
+  platform: 'instagram' | 'tiktok';
+  basadoEnCreadores: number;
+}
+
+export interface CreadorRecomendado {
+  creatorId: string;
+  nombre: string;
+  username: string | null;
+  score: number;
+  seguidoresDisplay: string | null;
+  etiquetas: string[];
+  similarityScore: number;
+  razon: string;
+}
+
+export interface FormulaGanadoraMarca {
+  brandId: string;
+  brandName: string;
+  perfilGanador: PerfilGanador;
+  recomendados: CreadorRecomendado[];
+}
+
+export interface CreadorEnAlza {
+  creatorId: string;
+  nombre: string;
+  username: string | null;
+  deltaFollowersPct: number;
+  deltaEngagementRate: number;
+  deltaVideosVirales: number;
+  momentumScore: number;
+  razon: string;
+  capturedAtPrev: string;
+  capturedAtLatest: string;
+}
+
+export interface ExColaborador {
+  creatorId: string;
+  nombre: string;
+  username: string | null;
+  avgEngagementRate: number | null;
+  totalInteracciones: number;
+  totalPosts: number;
+  brandsHistoricos: string[];
+  razon: string;
+}
+
+export interface RecomendacionesResponse {
+  formulaGanadora: FormulaGanadoraMarca[];
+  enAlza: { disponible: boolean; creadores: CreadorEnAlza[] };
+  exColaboradores: ExColaborador[];
+}
+
+export interface RefreshGateStatus {
+  status: 'idle' | 'running' | 'cooldown';
+  canRefresh: boolean;
+  runId: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  creatorsCount: number | null;
+  successCount: number | null;
+  failedCount: number | null;
+  nextEligibleAt: string | null;
 }
 
 /** Perfil del usuario logueado. Sin autenticación real todavía, es un único registro (ver /api/profile). */

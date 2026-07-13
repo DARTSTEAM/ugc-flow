@@ -1,4 +1,4 @@
-import type { UGC, Campana, EstadoEnCampana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana, SentimientoCampana, UserProfile } from './data';
+import type { UGC, Campana, EstadoEnCampana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana, SentimientoCampana, UserProfile, RecomendacionesResponse, RefreshGateStatus } from './data';
 
 const BASE = '/api';
 
@@ -186,6 +186,34 @@ export async function scrapeCampaignContent(
 
 export async function fetchCreatorContent(creatorId: string): Promise<ContenidoCampana[]> {
   return json<ContenidoCampana[]>(`/creators/${creatorId}/content`);
+}
+
+// ─── Recomendaciones ────────────────────────────────────────────────
+
+export async function fetchRecomendaciones(): Promise<RecomendacionesResponse> {
+  return json<RecomendacionesResponse>('/recomendaciones');
+}
+
+export async function fetchRefreshStatus(): Promise<RefreshGateStatus> {
+  return json<RefreshGateStatus>('/recomendaciones/refresh-status');
+}
+
+/**
+ * A diferencia de `json<T>`, acá un 409 es una respuesta esperada (cooldown /
+ * corrida en curso) con datos útiles para la UI, no sólo un error a tirar.
+ */
+export async function startRecomendacionesRefresh(): Promise<
+  | { ok: true; runId: string; startedAt: string; creatorsCount: number }
+  | { ok: false; conflict: 'refresh_in_progress' | 'cooldown' | 'empty_watchlist'; nextEligibleAt?: string; runId?: string }
+> {
+  const res = await fetch(`${BASE}/recomendaciones/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const body = await res.json();
+  if (res.status === 202) return { ok: true, ...body };
+  if (res.status === 409) return { ok: false, conflict: body.error, nextEligibleAt: body.nextEligibleAt, runId: body.runId };
+  throw new Error(`API ${res.status}: ${JSON.stringify(body)}`);
 }
 
 // ─── Profile ────────────────────────────────────────────────────────

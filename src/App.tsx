@@ -506,7 +506,7 @@ export default function App() {
                   {section === 'prospeccion' && 'Buscá y calificá nuevos creadores UGC para tus campañas'}
                   {section === 'campanas' && 'Creá, pausá y monitoreá el progreso de tus campañas activas'}
                   {section === 'chats' && 'Respondé mensajes y coordiná con tus creadores en un solo lugar'}
-                  {section === 'recomendaciones' && 'Top creadores rankeados por score, listos para tus campañas'}
+                  {section === 'recomendaciones' && 'Recomendaciones basadas en performance real de campañas y tendencias'}
                 </p>
               </div>
             ) }
@@ -578,7 +578,7 @@ export default function App() {
             } />
             <Route path="/chats" element={<ChatsTab ugcs={ugcs} onUpdateUGC={handleUpdateUGC} />} />
             <Route path="/chats/:ugcId" element={<ChatsTab ugcs={ugcs} onUpdateUGC={handleUpdateUGC} />} />
-            <Route path="/recomendaciones" element={<RecomendacionesTab ugcs={ugcs} campanas={campanas} />} />
+            <Route path="/recomendaciones" element={<RecomendacionesTab />} />
             <Route path="/testagent" element={<TestAgentTab />} />
             <Route path="/perfil" element={<ProfileView onSaved={setProfile} />} />
             <Route path="*" element={<Navigate to="/ugcs" replace />} />

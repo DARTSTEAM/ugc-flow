@@ -504,7 +504,7 @@ function NuevoCreadorModal({ onCrear, onClose }: NuevoCreadorModalProps) {
       id: `ugc-${Date.now()}`,
       nombre: nombre.trim(),
       canal,
-      estado: 'Nuevo',
+      estado: 'Pendiente',
       score: 0,
       ultimaActividad: 'ahora mismo',
       campanasignada: null,
@@ -1072,7 +1072,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
           style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-alt)' }}>
           <span className="text-xs font-mono" style={{ color: 'var(--color-text-3)' }}>{filtered.length} de {ugcs.length} creadores</span>
           <div className="flex gap-3">
-            {['Calificado', 'Respondió', 'Contactado'].map(e => {
+            {['Activo', 'En Negociación', 'Pendiente', 'Inactivo'].map(e => {
               const count = ugcs.filter(u => u.estado === e).length;
               return (
                 <span key={e} className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>

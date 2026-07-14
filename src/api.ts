@@ -1,4 +1,4 @@
-import type { UGC, Campana, EstadoEnCampana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana, SentimientoCampana, UserProfile, RecomendacionesResponse, RefreshGateStatus } from './data';
+import type { UGC, Canal, Campana, EstadoEnCampana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana, SentimientoCampana, UserProfile, RecomendacionesResponse, RefreshGateStatus } from './data';
 
 const BASE = '/api';
 
@@ -19,6 +19,19 @@ export async function fetchCreators(): Promise<UGC[]> {
 
 export async function fetchCreatorDetail(id: string): Promise<UGC> {
   return json<UGC>(`/creators/${id}`);
+}
+
+export async function createCreator(data: {
+  nombre: string;
+  canal: Canal;
+  username?: string;
+  usernameTiktok?: string;
+  bio?: string;
+}): Promise<UGC> {
+  return json<UGC>('/creators', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 export async function updateCreator(ugc: UGC): Promise<void> {

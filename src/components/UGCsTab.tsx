@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, ChevronDown, ChevronUp, ChevronsUpDown,
   Eye, MessageCircle, Trash2, SlidersHorizontal, X,
-  Filter, UserPlus, Instagram, Mail, MessageSquare, AlertTriangle
+  Filter, UserPlus, Instagram, MessageSquare, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import type { UGC, Canal, Campana } from '../data';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
@@ -13,11 +13,13 @@ import {
   parseFollowersNum, haTrabajadoConNGR
 } from '../utils';
 import UGCDrawer from './UGCDrawer';
+import { createCreator, scrapeCreator, scrapeTikTokCreator } from '../api';
+import tiktokLogo from '../assets/tiktok-logo.png';
 
 interface Props {
   ugcs: UGC[];
   campanas: Campana[];
-  onAddUGC: () => void;
+  onAddUGC: (ugc: UGC) => void;
   onUpdateUGC: (ugc: UGC) => void;
   onDeleteUGC: (id: string) => void;
   onGoToChat?: (ugc: UGC) => void;
@@ -27,7 +29,7 @@ interface Props {
 type SortKey = 'nombre' | 'estado' | 'score' | 'ultimaActividad';
 type SortDir = 'asc' | 'desc';
 
-const CANALES: Canal[] = ['WhatsApp', 'Instagram', 'Email'];
+const CANALES: Canal[] = ['WhatsApp', 'Instagram'];
 
 // ─── Overlay helper ──────────────────────────────────────────────────────────
 function Overlay({ onClick }: { onClick: () => void }) {
@@ -53,15 +55,16 @@ function ModalShell({ children, onClose, title, subtitle, icon }: {
       <Overlay onClick={onClose} />
       <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
         <div
-          className="w-full max-w-md pointer-events-auto modal-enter rounded-2xl border"
+          className="w-full max-w-md pointer-events-auto modal-enter rounded-2xl border flex flex-col"
           style={{
             backgroundColor: 'var(--color-surface)',
             borderColor: 'var(--color-border)',
             boxShadow: 'var(--shadow-modal)',
+            maxHeight: 'calc(100dvh - 2rem)',
           }}
         >
           {/* Header */}
-          <div className="px-6 pt-5 pb-4 border-b flex items-start justify-between" style={{ borderColor: 'var(--color-border-subtle)' }}>
+          <div className="px-6 pt-5 pb-4 border-b flex items-start justify-between flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'var(--color-brand-light)' }}>
                 {icon}
@@ -81,7 +84,9 @@ function ModalShell({ children, onClose, title, subtitle, icon }: {
               <X className="w-4 h-4" />
             </button>
           </div>
-          {children}
+          <div className="flex flex-col flex-1 min-h-0">
+            {children}
+          </div>
         </div>
       </div>
     </>
@@ -292,7 +297,7 @@ function FiltrosModal({ scoreMin, seguidoresMin, trabajoNGR, etiquetas: filterEt
       subtitle="Aplicá uno o más filtros para refinar la tabla"
       icon={<Filter className="w-5 h-5" style={{ color: 'var(--color-brand)' }} />}
     >
-      <div className="px-6 py-5 flex flex-col gap-5">
+      <div className="px-6 py-5 flex flex-col gap-5 overflow-visible">
 
         {/* Score mínimo + Mínimo de seguidores */}
         <div className="flex items-start gap-4">
@@ -432,7 +437,7 @@ function FiltrosModal({ scoreMin, seguidoresMin, trabajoNGR, etiquetas: filterEt
       </div>
 
       {/* Footer */}
-      <div className="px-6 py-4 border-t flex items-center justify-between gap-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+      <div className="px-6 py-4 border-t flex items-center justify-between gap-3 flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
         <button
           type="button"
           onClick={handleReset}
@@ -479,43 +484,62 @@ interface NuevoCreadorModalProps {
 const CANAL_ICONS: Record<Canal, React.ReactNode> = {
   WhatsApp: <MessageSquare className="w-4 h-4" />,
   Instagram: <Instagram className="w-4 h-4" />,
-  Email: <Mail className="w-4 h-4" />,
 };
 
 const CANAL_COLORS: Record<Canal, { active: string; bg: string; border: string }> = {
   WhatsApp:  { active: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
   Instagram: { active: '#9333ea', bg: '#faf5ff', border: '#e9d5ff' },
-  Email:     { active: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' },
 };
 
 function NuevoCreadorModal({ onCrear, onClose }: NuevoCreadorModalProps) {
   const [nombre, setNombre] = useState('');
   const [canal, setCanal] = useState<Canal>('Instagram');
-  const [seguidores, setSeguidores] = useState('');
+  const [username, setUsername] = useState('');
+  const [usernameTiktok, setUsernameTiktok] = useState('');
   const [bio, setBio] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [evaluando, setEvaluando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const focusHandlers = useInputFocus();
 
-  const canSubmit = nombre.trim().length > 0;
+  const canSubmit = nombre.trim().length > 0 && !submitting;
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
-    const newUGC: UGC = {
-      id: `ugc-${Date.now()}`,
-      nombre: nombre.trim(),
-      canal,
-      estado: 'Pendiente',
-      score: 0,
-      ultimaActividad: 'ahora mismo',
-      campanasignada: null,
-      conversacion: [],
-      calificacion: [],
-      seguidores: seguidores.trim() || undefined,
-      bio: bio.trim() || undefined,
-      scoreBreakdown: [],
-    };
-    onCrear(newUGC);
-    onClose();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const created = await createCreator({
+        nombre: nombre.trim(),
+        canal,
+        username: username.trim() || undefined,
+        usernameTiktok: usernameTiktok.trim() || undefined,
+        bio: bio.trim() || undefined,
+      });
+
+      let finalUgc = created;
+      if (created.username || created.usernameTiktok) {
+        setEvaluando(true);
+        const [igResult, ttResult] = await Promise.allSettled([
+          created.username ? scrapeCreator(created.id) : Promise.resolve(null),
+          created.usernameTiktok ? scrapeTikTokCreator(created.id) : Promise.resolve(null),
+        ]);
+        if (igResult.status === 'fulfilled' && igResult.value?.ok && igResult.value.evaluacionPerfil) {
+          finalUgc = { ...finalUgc, evaluacionPerfil: igResult.value.evaluacionPerfil, score: igResult.value.updatedScore ?? finalUgc.score };
+        }
+        if (ttResult.status === 'fulfilled' && ttResult.value?.ok && ttResult.value.evaluacionPerfilTiktok) {
+          finalUgc = { ...finalUgc, evaluacionPerfilTiktok: ttResult.value.evaluacionPerfilTiktok, score: ttResult.value.updatedScore ?? finalUgc.score };
+        }
+      }
+
+      onCrear(finalUgc);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear el creador');
+      setSubmitting(false);
+      setEvaluando(false);
+    }
   }
 
   return (
@@ -525,8 +549,8 @@ function NuevoCreadorModal({ onCrear, onClose }: NuevoCreadorModalProps) {
       subtitle="Completá los datos del creador UGC"
       icon={<UserPlus className="w-5 h-5" style={{ color: 'var(--color-brand)' }} />}
     >
-      <form onSubmit={handleSubmit}>
-        <div className="px-6 py-5 flex flex-col gap-5">
+      <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+        <div className="px-6 py-5 flex flex-col gap-5 overflow-y-auto flex-1 min-h-0">
 
           {/* Nombre */}
           <Field label="Nombre completo *">
@@ -544,7 +568,7 @@ function NuevoCreadorModal({ onCrear, onClose }: NuevoCreadorModalProps) {
 
           {/* Canal */}
           <Field label="Canal de contacto">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {CANALES.map(c => {
                 const isSelected = canal === c;
                 const colors = CANAL_COLORS[c];
@@ -573,16 +597,34 @@ function NuevoCreadorModal({ onCrear, onClose }: NuevoCreadorModalProps) {
             </div>
           </Field>
 
-          {/* Seguidores */}
-          <Field label="Seguidores (opcional)">
-            <input
-              value={seguidores}
-              onChange={e => setSeguidores(e.target.value)}
-              placeholder="Ej: 24.5k"
-              className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
-              style={inputStyle}
-              {...focusHandlers}
-            />
+          {/* Usuario Instagram */}
+          <Field label="Usuario de Instagram (opcional)">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>@</span>
+              <input
+                value={username}
+                onChange={e => setUsername(e.target.value.replace(/^@/, ''))}
+                placeholder="handle_de_instagram"
+                className="flex-1 px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+                style={inputStyle}
+                {...focusHandlers}
+              />
+            </div>
+          </Field>
+
+          {/* Usuario TikTok */}
+          <Field label="Usuario de TikTok (opcional)">
+            <div className="flex items-center gap-1.5">
+              <img src={tiktokLogo} alt="TikTok" className="w-4 h-4 object-contain flex-shrink-0" />
+              <input
+                value={usernameTiktok}
+                onChange={e => setUsernameTiktok(e.target.value.replace(/^@/, ''))}
+                placeholder="handle_de_tiktok"
+                className="flex-1 px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+                style={inputStyle}
+                {...focusHandlers}
+              />
+            </div>
           </Field>
 
           {/* Bio */}
@@ -598,14 +640,19 @@ function NuevoCreadorModal({ onCrear, onClose }: NuevoCreadorModalProps) {
             />
           </Field>
 
+          {error && (
+            <p className="text-xs font-semibold" style={{ color: 'rgb(220,38,38)' }}>{error}</p>
+          )}
+
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t flex items-center justify-end gap-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
+        <div className="px-6 py-4 border-t flex items-center justify-end gap-2 flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border rounded-xl text-sm font-semibold transition-all duration-200"
+            disabled={submitting}
+            className="px-4 py-2 border rounded-xl text-sm font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-2)', backgroundColor: 'var(--color-surface)' }}
             onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface)'}
@@ -620,8 +667,8 @@ function NuevoCreadorModal({ onCrear, onClose }: NuevoCreadorModalProps) {
             onMouseEnter={e => { if (canSubmit) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'; }}
             onMouseLeave={e => { if (canSubmit) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'; }}
           >
-            <UserPlus className="w-4 h-4" />
-            Agregar creador
+            {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+            {evaluando ? 'Evaluando perfil…' : submitting ? 'Agregando…' : 'Agregar creador'}
           </button>
         </div>
       </form>
@@ -753,7 +800,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
   }
 
   function handleCrearUGC(ugc: UGC) {
-    onUpdateUGC(ugc);
+    onAddUGC(ugc);
   }
 
   return (

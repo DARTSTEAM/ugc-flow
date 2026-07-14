@@ -33,7 +33,6 @@ export const ESTADO_UGC_CONFIG: Record<EstadoUGC, { label: string; className: st
 export const CANAL_CONFIG: Record<Canal, { label: string; className: string; dot: string }> = {
   WhatsApp:  { label: 'WhatsApp',  className: 'bg-green-50 dark:bg-green-300/10 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-300/20',   dot: 'bg-green-500' },
   Instagram: { label: 'Instagram', className: 'bg-purple-50 dark:bg-purple-300/10 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-300/20', dot: 'bg-purple-500' },
-  Email:     { label: 'Email',     className: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-300/20',                   dot: 'bg-sky-500' },
 };
 
 export const ESTADO_CAMPANA_CONFIG: Record<EstadoCampana, { label: string; className: string }> = {

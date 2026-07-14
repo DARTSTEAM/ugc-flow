@@ -1,5 +1,6 @@
 import 'dotenv/config'; // loads .env in dev; no-op in Cloud Run where vars are already injected
 import { pathToFileURL } from 'node:url';
+import { randomBytes } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import { BigQuery } from '@google-cloud/bigquery';
@@ -245,6 +246,55 @@ app.get('/api/creators/:id', async (req, res) => {
   }
 });
 
+// ─── POST /api/creators ──────────────────────────────────────────────
+app.post('/api/creators', async (req, res) => {
+  try {
+    const { nombre, canal, username, usernameTiktok, bio } = req.body;
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ error: 'nombre es requerido' });
+    }
+
+    const id = randomBytes(4).toString('hex');
+    const params = {
+      id,
+      nombre: nombre.trim(),
+      canal: canal || 'Instagram',
+      username: username?.trim() || null,
+      usernameTiktok: usernameTiktok?.trim() || null,
+      bio: bio?.trim() || '',
+      etiquetas: JSON.stringify([]),
+    };
+
+    await q(`
+      INSERT INTO ${DATASET}.creators
+        (creator_id, brand_id, full_name, canal, username, username_tiktok, bio, etiquetas, estado, score, created_at)
+      VALUES
+        (@id, 'popeyes', @nombre, @canal, @username, @usernameTiktok, @bio, @etiquetas, 'Pendiente', 0, CURRENT_TIMESTAMP())
+    `, params, { username: 'STRING', usernameTiktok: 'STRING' });
+
+    res.status(201).json({
+      id,
+      nombre: params.nombre,
+      canal: params.canal,
+      username: username?.trim() || undefined,
+      usernameTiktok: usernameTiktok?.trim() || undefined,
+      estado: 'Pendiente',
+      score: 0,
+      ultimaActividad: '',
+      campanasignada: null,
+      seguidores: '',
+      bio: params.bio,
+      conversacion: [],
+      calificacion: [],
+      scoreBreakdown: [],
+      etiquetas: [],
+    });
+  } catch (err) {
+    console.error('POST /api/creators error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── PUT /api/creators/:id ──────────────────────────────────────────
 app.put('/api/creators/:id', async (req, res) => {
   try {
@@ -262,7 +312,7 @@ app.put('/api/creators/:id', async (req, res) => {
         seguidores_display = @seguidores, username = @username,
         etiquetas = @etiquetas, username_tiktok = @usernameTiktok
       WHERE creator_id = @id
-    `, { id, nombre, canal, estado, score: score || 0, bio: bio || '', campanasignada: campanasignada || '', seguidores: seguidores || '', username: username || null, etiquetas: JSON.stringify(etiquetas || []), usernameTiktok: usernameTiktok || null });
+    `, { id, nombre, canal, estado, score: score || 0, bio: bio || '', campanasignada: campanasignada || '', seguidores: seguidores || '', username: username || null, etiquetas: JSON.stringify(etiquetas || []), usernameTiktok: usernameTiktok || null }, { username: 'STRING', usernameTiktok: 'STRING' });
 
     res.json({ ok: true });
   } catch (err) {

@@ -1,6 +1,6 @@
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-export type Canal = 'WhatsApp' | 'Instagram' | 'Email';
+export type Canal = 'WhatsApp' | 'Instagram';
 export type EstadoUGC = 'Pendiente' | 'Activo' | 'En Negociación' | 'Descartado' | 'Inactivo';
 export type EstadoCampana = 'Borrador' | 'Activa' | 'Pausada' | 'Cerrada';
 export type EstadoEnCampana = 'Pendiente' | 'Activo' | 'En Negociación' | 'Descartado';

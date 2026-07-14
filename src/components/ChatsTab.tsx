@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Search, Send, MessageSquare, Instagram, Mail, X, Plus,
+  Search, Send, MessageSquare, Instagram, X, Plus,
   User, Check, AlertCircle, Smile, ArrowLeft
 } from 'lucide-react';
 import type { UGC, Mensaje, Canal } from '../data';
@@ -19,7 +19,6 @@ type MobilePanel = 'lista' | 'conversacion' | 'perfil';
 const CANAL_CONFIG: Record<string, { icon: React.ComponentType<any>; color: string; label: string; bg: string; border: string }> = {
   WhatsApp: { icon: MessageSquare, color: '#16a34a', label: 'WhatsApp', bg: 'rgba(22, 163, 74, 0.08)', border: 'rgba(22, 163, 74, 0.2)' },
   Instagram: { icon: Instagram, color: '#9333ea', label: 'Instagram Direct', bg: 'rgba(147, 51, 234, 0.08)', border: 'rgba(147, 51, 234, 0.2)' },
-  Email: { icon: Mail, color: '#0284c7', label: 'Correo Electrónico', bg: 'rgba(2, 132, 199, 0.08)', border: 'rgba(2, 132, 199, 0.2)' },
   TikTok: { icon: MessageSquare, color: '#000000', label: 'TikTok Direct', bg: 'rgba(0, 0, 0, 0.05)', border: 'rgba(0, 0, 0, 0.15)' },
 };
 

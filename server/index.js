@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import { BigQuery } from '@google-cloud/bigquery';
-import { scrapeCreatorProfiles, scrapeTikTokProfiles, scrapeCampaignContent, refreshWatchlistSnapshots } from './kernel/index.js';
+import { scrapeCreatorProfiles, scrapeTikTokProfiles, scrapeCampaignContent, refreshWatchlistSnapshots, prospectCreators } from './kernel/index.js';
 import { detectPlatform } from './kernel/scrapers/content-post.js';
 import { recalcularScore } from './score-service.js';
 import { computeCampaignMetrics } from './metrics-service.js';
@@ -431,6 +431,7 @@ app.get('/api/recomendaciones', async (req, res) => {
 app.post('/api/recomendaciones/refresh', async (req, res) => {
   try {
     const gate = await getRefreshGateStatus();
+    console.log('[Recomendaciones] POST /refresh — gate:', gate.status);
     if (gate.status === 'running') {
       return res.status(409).json({ error: 'refresh_in_progress', runId: gate.runId, startedAt: gate.startedAt });
     }
@@ -439,21 +440,27 @@ app.post('/api/recomendaciones/refresh', async (req, res) => {
     }
 
     const creatorIds = await getWatchlistCreatorIds();
+    console.log(`[Recomendaciones] watchlist: ${creatorIds.length} creadores`, creatorIds);
     if (!creatorIds.length) {
       return res.status(409).json({ error: 'empty_watchlist' });
     }
 
     const runId = await startRefreshRun(creatorIds.length);
+    console.log(`[Recomendaciones] run ${runId} iniciado — respondiendo 202 y siguiendo en background`);
     res.status(202).json({ ok: true, runId, startedAt: new Date().toISOString(), creatorsCount: creatorIds.length });
 
     // Fire-and-forget — la respuesta ya se envió, esto sigue en background.
     (async () => {
       try {
         const result = await refreshWatchlistSnapshots(creatorIds, runId);
+        console.log(`[Recomendaciones] run ${runId} — IG success=${result.igResult?.success.length ?? 0} failed=${result.igResult?.failed.length ?? 0} | TT success=${result.ttResult?.success.length ?? 0} failed=${result.ttResult?.failed.length ?? 0} | snapshotted=${result.snapshotted.length}`);
+        if (result.igResult?.failed.length) console.log(`[Recomendaciones] run ${runId} — IG fallas:`, result.igResult.failed);
+        if (result.ttResult?.failed.length) console.log(`[Recomendaciones] run ${runId} — TikTok fallas:`, result.ttResult.failed);
         await completeRefreshRun(runId, {
           successCount: result.snapshotted.length,
           failedCount: creatorIds.length - result.snapshotted.length,
         });
+        console.log(`[Recomendaciones] run ${runId} marcado 'completed'`);
       } catch (err) {
         console.error(`[Recomendaciones] run ${runId} falló:`, err);
         await failRefreshRun(runId, err.message);
@@ -764,6 +771,39 @@ app.post('/api/creators/:id/scrape-tiktok', async (req, res) => {
     res.json({ ok: true, evaluacionPerfilTiktok, updatedScore, durationMs: result.durationMs });
   } catch (err) {
     console.error('POST /api/creators/:id/scrape-tiktok error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ─── POST /api/prospect ──────────────────────────────────────────────
+// Prospección inteligente: dado un nicho/locación/rango de seguidores/plataforma,
+// busca candidatos en Google, los analiza reutilizando el scraper de Instagram
+// o TikTok correspondiente y devuelve los que caen dentro del rango pedido.
+// Puede tardar varios minutos (delay de 3-7s entre cada perfil analizado) — el
+// frontend debe mostrar loading mientras espera la respuesta síncrona.
+const PLATAFORMAS_PROSPECT = ['instagram', 'tiktok'];
+app.post('/api/prospect', async (req, res) => {
+  try {
+    const { niche, location, minFollowers, maxFollowers, targetQuantity, platform } = req.body;
+    if (!niche?.trim()) return res.status(400).json({ ok: false, error: 'niche es requerido' });
+
+    const platformNorm = (platform || 'instagram').toLowerCase();
+    if (!PLATAFORMAS_PROSPECT.includes(platformNorm)) {
+      return res.status(400).json({ ok: false, error: `platform inválido: "${platform}" (válidos: ${PLATAFORMAS_PROSPECT.join(', ')})` });
+    }
+
+    const result = await prospectCreators({
+      niche: niche.trim(),
+      location: location?.trim() || null,
+      minFollowers,
+      maxFollowers,
+      targetQuantity,
+      platform: platformNorm,
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('POST /api/prospect error:', err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

@@ -2,6 +2,7 @@ import { BigQuery } from '@google-cloud/bigquery';
 import { scrapeInstagramProfile } from './scrapers/instagram-profile.js';
 import { scrapeTikTokProfile } from './scrapers/tiktok-profile.js';
 import { scrapeContentPost, detectPlatform } from './scrapers/content-post.js';
+import { buildGoogleDork, searchProfiles } from './scrapers/google-search.js';
 import { closeAllBrowsers, closeBrowser } from './browser-pool.js';
 import { recalcularScore } from '../score-service.js';
 import { analyzeSentiment } from '../sentiment-service.js';
@@ -213,12 +214,19 @@ export async function scrapeTikTokProfiles(creatorIds) {
  * @returns {{ igResult: object, ttResult: object, snapshotted: string[] }}
  */
 export async function refreshWatchlistSnapshots(creatorIds, runId) {
+  console.log(`[Recomendaciones/Kernel] run ${runId} — refreshWatchlistSnapshots(${creatorIds.length} creadores)`);
   if (!creatorIds.length) return { igResult: null, ttResult: null, snapshotted: [] };
 
+  console.log(`[Recomendaciones/Kernel] run ${runId} — scrapeando Instagram (secuencial, 1/2)...`);
   const igResult = await scrapeCreatorProfiles(creatorIds);
+  console.log(`[Recomendaciones/Kernel] run ${runId} — Instagram listo: success=${igResult.success.length} failed=${igResult.failed.length} (${igResult.durationMs}ms)`);
+
+  console.log(`[Recomendaciones/Kernel] run ${runId} — scrapeando TikTok (secuencial, 2/2)...`);
   const ttResult = await scrapeTikTokProfiles(creatorIds);
+  console.log(`[Recomendaciones/Kernel] run ${runId} — TikTok listo: success=${ttResult.success.length} failed=${ttResult.failed.length} (${ttResult.durationMs}ms)`);
 
   const succeeded = [...new Set([...igResult.success, ...ttResult.success])];
+  console.log(`[Recomendaciones/Kernel] run ${runId} — ${succeeded.length} creadores con al menos una plataforma exitosa:`, succeeded);
   if (!succeeded.length) return { igResult, ttResult, snapshotted: [] };
 
   const placeholders = succeeded.map((_, i) => `@id${i}`).join(', ');
@@ -277,8 +285,10 @@ export async function refreshWatchlistSnapshots(creatorIds, runId) {
       location: 'US',
     });
     snapshotted.push(r.creator_id);
+    console.log(`[Recomendaciones/Kernel] run ${runId} — snapshot guardado para ${r.creator_id} (${snapshotId})`);
   }
 
+  console.log(`[Recomendaciones/Kernel] run ${runId} — listo, ${snapshotted.length}/${creatorIds.length} snapshots guardados`);
   return { igResult, ttResult, snapshotted };
 }
 
@@ -349,6 +359,130 @@ export async function scrapeCampaignContent(campaignId) {
   }
 
   return { success, failed, durationMs: Date.now() - start, sentiment };
+}
+
+// Normaliza la respuesta de cada analizador de plataforma a un shape común de prospecto.
+const PLATFORM_ADAPTERS = {
+  instagram: {
+    analyze: scrapeInstagramProfile,
+    toProspecto: (username, data) => ({
+      username,
+      platform: 'instagram',
+      profileUrl: `https://www.instagram.com/${username}/`,
+      nombre: data.nombre,
+      seguidores: data.seguidores ?? 0,
+      bio: data.bio ?? null,
+      engagementRate: data.engagementRateCuenta,
+      promedioVistas: data.promedioVistaVideos,
+      categoria: data.categoria,
+      frecuenciaSemanal: data.frecuenciaSemanal,
+      videosVirales: data.videosVirales,
+    }),
+  },
+  tiktok: {
+    analyze: scrapeTikTokProfile,
+    toProspecto: (username, data) => ({
+      username,
+      platform: 'tiktok',
+      profileUrl: `https://www.tiktok.com/@${username}`,
+      nombre: data.nombre,
+      seguidores: data.seguidores ?? 0,
+      bio: data.bio ?? null,
+      engagementRate: data.engagementRate,
+      promedioVistas: data.promedioVistas,
+      categoria: null,
+      frecuenciaSemanal: data.frecuenciaSemanal,
+      videosVirales: data.videosVirales,
+    }),
+  },
+};
+
+/**
+ * Prospección inteligente: busca creadores (Instagram o TikTok, según
+ * `platform`) en Google Dorking a partir de un nicho/locación, analiza cada
+ * candidato reutilizando scrapeInstagramProfile()/scrapeTikTokProfile() (los
+ * mismos analizadores que usa el resto del sistema, sin escribir a BigQuery —
+ * estos creadores todavía no existen en la base) y se queda con los que caen
+ * dentro del rango de seguidores pedido.
+ *
+ * Se detiene apenas junta `targetQuantity` aprobados o se queda sin candidatos.
+ * Nunca lanza: si Google bloquea la búsqueda (captcha) o la plataforma bloquea
+ * un perfil puntual, sigue con el resto y devuelve lo que haya logrado juntar.
+ *
+ * @param {{ niche: string, location?: string, minFollowers?: number, maxFollowers?: number, targetQuantity?: number, platform?: 'instagram'|'tiktok' }} params
+ * @returns {{ query: string, platform: string, googleBlocked: boolean, totalCandidates: number, approved: object[], discarded: object[], errors: Array<{username?:string, stage?:string, reason:string}> }}
+ */
+export async function prospectCreators({ niche, location, minFollowers, maxFollowers, targetQuantity, platform }) {
+  if (!niche) throw new Error('niche es requerido');
+
+  const platformKey = PLATFORM_ADAPTERS[platform] ? platform : 'instagram';
+  const adapter = PLATFORM_ADAPTERS[platformKey];
+
+  const target = Number(targetQuantity) > 0 ? Number(targetQuantity) : 10;
+  const min = minFollowers != null && minFollowers !== '' ? Number(minFollowers) : null;
+  const max = maxFollowers != null && maxFollowers !== '' ? Number(maxFollowers) : null;
+
+  const query = buildGoogleDork({ niche, location, platform: platformKey });
+  console.log(`[Prospecting] iniciando (${platformKey}) — query: "${query}" | target: ${target} | rango seguidores: ${min ?? '-'}–${max ?? '-'}`);
+
+  const approved = [];
+  const discarded = [];
+  const errors = [];
+  let usernames = [];
+  let googleBlocked = false;
+
+  try {
+    const searchResult = await searchProfiles(query, { platform: platformKey, maxResults: target * 3 });
+    usernames = searchResult.usernames;
+    googleBlocked = searchResult.blocked;
+    if (searchResult.error) errors.push({ stage: 'google_search', reason: searchResult.error });
+
+    for (let i = 0; i < usernames.length && approved.length < target; i++) {
+      const username = usernames[i];
+      if (i > 0) await sleep(3000 + Math.random() * 4000); // 3-7s entre perfiles
+
+      try {
+        const data = await adapter.analyze(username);
+
+        if (data.error) {
+          console.warn(`[Prospecting] @${username} (${platformKey}) — scrape falló: ${data.error}`);
+          errors.push({ username, reason: data.error });
+          // login_wall implica que la sesión quedó pisada — arrancar limpia en el próximo intento
+          if (data.error === 'login_wall') await closeBrowser(platformKey).catch(() => {});
+          continue;
+        }
+
+        const prospecto = adapter.toProspecto(username, data);
+        const seguidores = prospecto.seguidores;
+        const enRango = (min == null || seguidores >= min) && (max == null || seguidores <= max);
+
+        if (enRango) {
+          approved.push(prospecto);
+          console.log(`[Prospecting] ✓ @${username} aprobado (${seguidores} seguidores) — ${approved.length}/${target}`);
+        } else {
+          discarded.push({ ...prospecto, motivo: 'fuera_de_rango_seguidores' });
+          console.log(`[Prospecting] ✗ @${username} fuera de rango (${seguidores} seguidores)`);
+        }
+      } catch (err) {
+        console.error(`[Prospecting] @${username} — error inesperado:`, err.message);
+        errors.push({ username, reason: err.message });
+      }
+    }
+  } finally {
+    await closeAllBrowsers().catch(() => {});
+  }
+
+  console.log(`[Prospecting] listo (${platformKey}) — ${approved.length} aprobados, ${discarded.length} descartados, ${errors.length} errores (de ${usernames.length} candidatos)`);
+
+  return {
+    query,
+    platform: platformKey,
+    googleBlocked,
+    totalCandidates: usernames.length,
+    approved,
+    discarded,
+    errors,
+  };
 }
 
 // ─── Private ─────────────────────────────────────────────────────────────────

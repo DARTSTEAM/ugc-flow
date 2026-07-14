@@ -46,6 +46,7 @@ export async function scrapeTikTokProfile(handle) {
         capturedUser = {
           nombre:    userData.nickname || userData.uniqueId || handle,
           seguidores: Number(stats.followerCount),
+          bio:       userData.signature ?? null,
         };
         console.log(`[Kernel/TikTok] @${handle} — user captured via /api/user/detail/ | followers: ${capturedUser.seguidores}`);
         resolveUser?.();
@@ -59,6 +60,7 @@ export async function scrapeTikTokProfile(handle) {
         capturedUser = {
           nombre:    author.nickname || author.uniqueId || handle,
           seguidores: Number(authorStats.followerCount),
+          bio:       author.signature ?? null,
         };
         console.log(`[Kernel/TikTok] @${handle} — user captured via /api/post/item_list/ authorStats | followers: ${capturedUser.seguidores}`);
         resolveUser?.();
@@ -195,6 +197,7 @@ export async function scrapeTikTokProfile(handle) {
       handle,
       nombre:       capturedUser.nombre,
       seguidores:   capturedUser.seguidores,
+      bio:          capturedUser.bio ?? null,
       engagementRate,
       promedioVistas,
       frecuenciaSemanal,
@@ -242,6 +245,7 @@ async function extractFromTikTokDom(page) {
                 user: {
                   nombre:    user.nickname || user.uniqueId,
                   seguidores: Number(stats.followerCount),
+                  bio:       user.signature ?? null,
                 },
                 videos: parseVideos(userDetail?.itemList),
               };
@@ -282,6 +286,7 @@ async function extractFromTikTokDom(page) {
                 user: {
                   nombre:    u.nickname || u.uniqueId,
                   seguidores: Number(followerCount),
+                  bio:       u.signature ?? null,
                 },
                 videos,
               };

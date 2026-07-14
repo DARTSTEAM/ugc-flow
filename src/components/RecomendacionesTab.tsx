@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Trophy, TrendingUp, RefreshCw, Users, Loader2, ArrowUp, AlertTriangle } from 'lucide-react';
+import {
+  Trophy, TrendingUp, RefreshCw, Users, Loader2, ArrowUp, AlertTriangle, HelpCircle,
+  X, Sparkles, CheckCircle2, BarChart3, ArrowUpDown,
+} from 'lucide-react';
 import { getInitials, avatarColor } from '../utils';
 import { fetchRecomendaciones, fetchRefreshStatus, startRecomendacionesRefresh } from '../api';
 import type {
   RecomendacionesResponse, RefreshGateStatus,
-  FormulaGanadoraMarca, CreadorRecomendado, CreadorEnAlza, ExColaborador,
+  CreadorRecomendado, CreadorEnAlza, ExColaborador,
+  UGC, Campana,
 } from '../data';
+import UGCDrawer, { type RecomendacionDrawerContext } from './UGCDrawer';
+
+interface Props {
+  ugcs: UGC[];
+  campanas: Campana[];
+  onUpdateUGC: (ugc: UGC) => void;
+  onAsignar: (ugc: UGC, campanaId: string) => void;
+  onGoToChat: (ugc: UGC) => void;
+}
 
 type SectionId = 'formula' | 'en-alza' | 'ex-colaboradores';
 
@@ -20,6 +33,211 @@ function formatEta(nextEligibleAt: string | null): string {
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+interface HelpPoint { label: string; value: string; colorClass: string; }
+interface HelpStep { icon: React.ElementType; colorClass: string; title: string; desc: string; points?: HelpPoint[]; }
+interface HelpExample { nombre: string; bullets: HelpPoint[]; total: string; conclusion: string; }
+interface SectionHelp { intro: string; steps: HelpStep[]; example: HelpExample; }
+
+const SECTION_HELP: Record<SectionId, SectionHelp> = {
+  formula: {
+    intro: 'Encuentra candidatos nuevos con el perfil de los creadores que hoy están Activo en tus campañas activas.',
+    steps: [
+      {
+        icon: Trophy, colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-600 dark:text-amber-400',
+        title: 'Identifica a los creadores de tus campañas activas',
+        desc: 'Toma a todos los creadores en estado Activo dentro de campañas con status Activa (sin importar la marca). Si son muchos, prioriza por engagement rate real cuando hay contenido cargado en Campañas → Contenido.',
+      },
+      {
+        icon: Users, colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-600 dark:text-sky-400',
+        title: 'Arma un "perfil ganador"',
+        desc: 'ER de cuenta promedio, alcance por posteo, rango de seguidores y plataforma que esos creadores tienen en común, sin segmentar por marca. Sólo usa métricas que se recalculan solas con cada refresh — nada manual como etiquetas, nada tan genérico como la categoría que asigna Instagram. El ER promedio se calcula por separado en Instagram y en TikTok — mezclarlos daría un número irreal, porque TikTok suele tener engagement mucho más alto que Instagram.',
+      },
+      {
+        icon: Sparkles, colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300',
+        title: 'Puntúa a los candidatos nuevos',
+        desc: 'Cada creador en estado Pendiente recibe un score de similitud contra el perfil de SU MISMA plataforma (un candidato de Instagram se compara contra el promedio de Instagram, nunca contra el de TikTok):',
+        points: [
+          { label: 'ER de cuenta similar', value: 'hasta 40pts', colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300' },
+          { label: 'Alcance por posteo similar', value: 'hasta 20pts', colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300' },
+          { label: 'Rango de seguidores', value: '25pts', colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300' },
+          { label: 'Plataforma', value: '15pts', colorClass: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300' },
+        ],
+      },
+      {
+        icon: CheckCircle2, colorClass: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-600 dark:text-emerald-400',
+        title: 'Filtra el ruido',
+        desc: 'Sólo se muestran los candidatos que superan 20 puntos de similitud, ordenados de mayor a menor.',
+      },
+    ],
+    example: {
+      nombre: 'Camila R. — ejemplo, no es un creador real',
+      bullets: [
+        { label: 'ER de cuenta 3.1% vs 2.1% del perfil en Instagram (diferencia de 1pt × 10)', value: '30pts', colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300' },
+        { label: 'Alcance por posteo: 83% de cercanía con el perfil', value: '17pts', colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300' },
+        { label: '35.000 seguidores → mismo rango 20k-50k', value: '25pts', colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300' },
+        { label: 'Tiene datos de Instagram (la plataforma del perfil)', value: '15pts', colorClass: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300' },
+      ],
+      total: '87 / 100 puntos',
+      conclusion: 'Como supera el mínimo de 20 puntos, Camila R. aparecería recomendada — cerca del primer puesto, ordenada por su score de similitud.',
+    },
+  },
+  'en-alza': {
+    intro: 'Detecta creadores con crecimiento real comparando dos momentos en el tiempo.',
+    steps: [
+      {
+        icon: RefreshCw, colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-600 dark:text-amber-400',
+        title: 'Cada actualización guarda una foto',
+        desc: 'Al presionar "Actualizar tendencias" se re-escanea Instagram/TikTok y se guarda una foto fechada (snapshot) de las métricas de cada creador del watchlist (Activo, En Negociación, Inactivo).',
+      },
+      {
+        icon: TrendingUp, colorClass: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-600 dark:text-emerald-400',
+        title: 'Compara las últimas 2 fotos',
+        desc: 'Hace falta al menos 2 actualizaciones registradas para poder calcular una diferencia — con sólo 1 no hay nada para comparar todavía.',
+      },
+      {
+        icon: Sparkles, colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300',
+        title: 'Calcula un score de momentum',
+        desc: 'Suma tres variaciones, cada una con un tope máximo:',
+        points: [
+          { label: '% de crecimiento de seguidores', value: 'hasta 50pts', colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300' },
+          { label: 'Variación de engagement rate ×6', value: 'hasta 30pts', colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300' },
+          { label: 'Nuevos videos virales ×10', value: 'hasta 20pts', colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300' },
+        ],
+      },
+      {
+        icon: CheckCircle2, colorClass: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-600 dark:text-emerald-400',
+        title: 'Sólo lo positivo',
+        desc: 'Si un creador no tuvo ningún crecimiento neto, simplemente no aparece en esta lista — no se muestran caídas.',
+      },
+    ],
+    example: {
+      nombre: 'Marco T. — ejemplo, no es un creador real',
+      bullets: [
+        { label: 'Seguidores: 50.000 → 54.000 (+8%)', value: '8pts', colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300' },
+        { label: 'ER: 2.0% → 2.8% (+0.8pts × 6)', value: '4.8pts', colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300' },
+        { label: 'Videos virales: 1 → 3 (+2 × 10)', value: '20pts', colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300' },
+      ],
+      total: '≈33 puntos de momentum',
+      conclusion: 'Marco T. aparecería en "En alza", ordenado junto a otros creadores con crecimiento neto positivo desde la última actualización.',
+    },
+  },
+  'ex-colaboradores': {
+    intro: 'Vuelve a poner en el radar a quienes ya funcionaron, pero hoy están sin campaña.',
+    steps: [
+      {
+        icon: RefreshCw, colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-600 dark:text-amber-400',
+        title: 'Busca creadores Inactivos',
+        desc: 'Ya trabajaron en alguna campaña (estuvieron Activo), pero hoy no tienen ninguna asignación vigente — ni Activo ni En Negociación en ninguna campaña abierta.',
+      },
+      {
+        icon: BarChart3, colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-600 dark:text-sky-400',
+        title: 'Mide su performance real',
+        desc: 'Engagement rate promedio y total de interacciones (likes + comentarios + compartidos + guardados) en los posteos cargados en Campañas → Contenido.',
+      },
+      {
+        icon: ArrowUpDown, colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300',
+        title: 'Ordena por resultado',
+        desc: 'Primero los que tienen métricas reales cargadas, con mejor ER arriba. Los que todavía no tienen contenido cargado quedan al final, sin ordenar por número.',
+      },
+    ],
+    example: {
+      nombre: 'Valentina G. — ejemplo, no es un creador real',
+      bullets: [
+        { label: '3 posteos con ER 5.2%, 3.8% y 4.5%', value: 'prom. 4.5%', colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300' },
+        { label: 'Interacciones totales en esos 3 posteos', value: '12.400', colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300' },
+      ],
+      total: 'ER promedio: 4.5%',
+      conclusion: 'Valentina G. aparecería arriba en la lista, antes que otro ex-colaborador sin posteos cargados — porque tiene métricas reales para ordenar.',
+    },
+  },
+};
+
+function HelpModal({ section, sectionLabel, sectionIcon: SectionIcon, onClose }: {
+  section: SectionId; sectionLabel: string; sectionIcon: React.ElementType; onClose: () => void;
+}) {
+  const help = SECTION_HELP[section];
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-50 overlay-enter"
+        style={{ backgroundColor: 'rgba(9,10,15,0.45)', backdropFilter: 'blur(4px)' }}
+        onClick={onClose}
+      />
+      <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
+        <div
+          className="rounded-2xl w-full max-w-lg pointer-events-auto modal-enter border flex flex-col max-h-[85vh]"
+          style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-modal)' }}
+        >
+          <div className="px-6 pt-5 pb-4 border-b flex items-start justify-between flex-shrink-0" style={{ borderColor: 'var(--color-border-subtle)' }}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--color-brand-light)' }}>
+                <SectionIcon className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+              </div>
+              <div>
+                <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Cómo se calcula: {sectionLabel}</h3>
+                <p className="text-xs" style={{ color: 'var(--color-text-3)' }}>{help.intro}</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-9 h-9 flex items-center justify-center rounded-lg transition-colors duration-200 flex-shrink-0"
+              style={{ color: 'var(--color-text-3)' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+            {help.steps.map((step, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${step.colorClass}`}>
+                  <step.icon className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0 pt-0.5">
+                  <p className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>{step.title}</p>
+                  <p className="text-xs leading-relaxed mt-0.5" style={{ color: 'var(--color-text-2)' }}>{step.desc}</p>
+                  {step.points && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {step.points.map(p => (
+                        <span key={p.label} className={`px-2 py-1 rounded-md text-[10px] font-semibold ${p.colorClass}`}>
+                          {p.label} · {p.value}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            <div className="p-3.5 rounded-xl border border-dashed" style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-surface-alt)' }}>
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />
+                <p className="text-[10px] font-black uppercase tracking-wide" style={{ color: 'var(--color-brand)' }}>Ejemplo (creador ficticio)</p>
+              </div>
+              <p className="text-xs font-bold mb-2.5" style={{ color: 'var(--color-text-1)' }}>{help.example.nombre}</p>
+              <div className="flex flex-col gap-1.5 mb-2.5">
+                {help.example.bullets.map((b, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 text-xs">
+                    <span style={{ color: 'var(--color-text-2)' }}>{b.label}</span>
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0 ${b.colorClass}`}>{b.value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between pt-2.5 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                <span className="text-xs font-bold" style={{ color: 'var(--color-text-1)' }}>Total</span>
+                <span className="text-sm font-black" style={{ color: 'var(--color-brand)' }}>{help.example.total}</span>
+              </div>
+              <p className="text-[11px] leading-relaxed mt-2.5" style={{ color: 'var(--color-text-3)' }}>{help.example.conclusion}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }
 
 function Chip({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'neutral' | 'brand' | 'amber' }) {
@@ -36,11 +254,22 @@ function Chip({ children, tone = 'neutral' }: { children: React.ReactNode; tone?
   return <span className={className} style={style}>{children}</span>;
 }
 
-function CardShell({ children }: { children: React.ReactNode }) {
+function CardShell({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <div
-      className="flex flex-col p-4 rounded-2xl border transition-all duration-200"
-      style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}
+      onClick={onClick}
+      className="flex flex-col p-4 rounded-2xl border select-none"
+      style={{
+        backgroundColor: 'var(--color-surface)',
+        borderColor: hovered ? 'var(--color-brand)' : 'var(--color-border)',
+        boxShadow: hovered ? 'var(--shadow-card-hover)' : 'var(--shadow-card)',
+        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'border-color 150ms, box-shadow 150ms, transform 150ms',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {children}
     </div>
@@ -83,9 +312,9 @@ function EmptyState({ icon: Icon, title, desc }: { icon: React.ElementType; titl
   );
 }
 
-function FormulaCard({ c }: { c: CreadorRecomendado }) {
+function FormulaCard({ c, onClick }: { c: CreadorRecomendado; onClick: () => void }) {
   return (
-    <CardShell>
+    <CardShell onClick={onClick}>
       <CardHeader
         id={c.creatorId} nombre={c.nombre} username={c.username}
         rightBadge={<span className="font-mono font-bold text-lg flex-shrink-0" style={{ color: 'var(--color-brand)' }}>{c.similarityScore}</span>}
@@ -100,18 +329,21 @@ function FormulaCard({ c }: { c: CreadorRecomendado }) {
             <span className="font-mono font-semibold">{c.seguidoresDisplay}</span>
           </div>
         )}
-      </div>
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {c.etiquetas.slice(0, 2).map(tag => <Chip key={tag} tone="brand">{tag}</Chip>)}
+        {c.engagementRate != null && (
+          <div className="flex items-center gap-1">
+            <TrendingUp className="w-3 h-3 flex-shrink-0" />
+            <span className="font-mono font-semibold">{c.engagementRate.toFixed(1)}% ER</span>
+          </div>
+        )}
       </div>
       <CardFooter razon={c.razon} />
     </CardShell>
   );
 }
 
-function EnAlzaCard({ c }: { c: CreadorEnAlza }) {
+function EnAlzaCard({ c, onClick }: { c: CreadorEnAlza; onClick: () => void }) {
   return (
-    <CardShell>
+    <CardShell onClick={onClick}>
       <CardHeader
         id={c.creatorId} nombre={c.nombre} username={c.username}
         rightBadge={<span className="font-mono font-bold text-lg flex-shrink-0 text-emerald-600 dark:text-emerald-400">{Math.round(c.momentumScore)}</span>}
@@ -138,9 +370,9 @@ function EnAlzaCard({ c }: { c: CreadorEnAlza }) {
   );
 }
 
-function ExColaboradorCard({ c }: { c: ExColaborador }) {
+function ExColaboradorCard({ c, onClick }: { c: ExColaborador; onClick: () => void }) {
   return (
-    <CardShell>
+    <CardShell onClick={onClick}>
       <CardHeader
         id={c.creatorId} nombre={c.nombre} username={c.username}
         rightBadge={c.avgEngagementRate != null
@@ -157,7 +389,7 @@ function ExColaboradorCard({ c }: { c: ExColaborador }) {
   );
 }
 
-export default function RecomendacionesTab() {
+export default function RecomendacionesTab({ ugcs, campanas, onUpdateUGC, onAsignar, onGoToChat }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
   const section = (searchParams.get('section') as SectionId | null) ?? 'formula';
 
@@ -165,7 +397,16 @@ export default function RecomendacionesTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gate, setGate] = useState<RefreshGateStatus | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [selected, setSelected] = useState<{ ugc: UGC; context: RecomendacionDrawerContext } | null>(null);
   const pollRef = useRef<number | null>(null);
+
+  /** Busca el UGC completo (ya cargado en App) y abre el drawer con el desglose de por qué apareció acá. */
+  function openDetalle(creatorId: string, context: RecomendacionDrawerContext) {
+    const ugc = ugcs.find(u => u.id === creatorId);
+    if (!ugc) return;
+    setSelected({ ugc, context });
+  }
 
   function updateParams(patch: Record<string, string | null>) {
     setSearchParams(prev => {
@@ -211,13 +452,13 @@ export default function RecomendacionesTab() {
     if (result) loadGate();
   }
 
-  const formulaCount = data?.formulaGanadora.reduce((acc, b) => acc + b.recomendados.length, 0) ?? 0;
+  const formulaCount = data?.formulaGanadora.recomendados.length ?? 0;
   const enAlzaCount = data?.enAlza.creadores.length ?? 0;
   const exColaboradoresCount = data?.exColaboradores.length ?? 0;
 
   const SECTIONS = [
     { id: 'formula' as SectionId, label: 'Fórmula ganadora', icon: Trophy, count: formulaCount,
-      desc: 'Perfil de tus creadores con mejor rendimiento real por marca, matcheado contra candidatos sin contactar' },
+      desc: 'Perfil de tus creadores Activo en campañas activas, matcheado contra candidatos sin contactar' },
     { id: 'en-alza' as SectionId, label: 'En alza', icon: TrendingUp, count: enAlzaCount,
       desc: 'Creadores con crecimiento reciente de seguidores, engagement o videos virales' },
     { id: 'ex-colaboradores' as SectionId, label: 'Ex-colaboradores', icon: RefreshCw, count: exColaboradoresCount,
@@ -290,11 +531,37 @@ export default function RecomendacionesTab() {
         })}
       </div>
 
-      {/* Descripción de sección */}
-      <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-        {(() => { const Icon = currentSection.icon; return <Icon className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />; })()}
-        <p className="text-xs" style={{ color: 'var(--color-text-3)' }}>{currentSection.desc}</p>
+      {/* Descripción de sección + botón "Cómo se calcula" (dos divs, misma row) */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border flex-1 min-w-0" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+          {(() => { const Icon = currentSection.icon; return <Icon className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />; })()}
+          <p className="text-xs" style={{ color: 'var(--color-text-3)' }}>{currentSection.desc}</p>
+        </div>
+        <button
+          onClick={() => setHelpOpen(true)}
+          title="Cómo se calcula"
+          className="group flex items-center px-3 py-2.5 text-white rounded-xl text-sm font-semibold transition-all duration-200 active:scale-[0.97] flex-shrink-0"
+          style={{ backgroundColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)' }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand-hover)'}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-brand)'}
+        >
+          <HelpCircle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="grid grid-cols-[0fr] group-hover:grid-cols-[1fr] transition-[grid-template-columns] duration-200 ease-out">
+            <span className="overflow-hidden whitespace-nowrap">
+              <span className="pl-2">Cómo se calcula</span>
+            </span>
+          </span>
+        </button>
       </div>
+
+      {helpOpen && (
+        <HelpModal
+          section={section}
+          sectionLabel={currentSection.label}
+          sectionIcon={currentSection.icon}
+          onClose={() => setHelpOpen(false)}
+        />
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
@@ -303,34 +570,46 @@ export default function RecomendacionesTab() {
       ) : error ? (
         <EmptyState icon={AlertTriangle} title="No se pudieron cargar las recomendaciones" desc={error} />
       ) : section === 'formula' ? (
-        !data?.formulaGanadora.length ? (
+        !data?.formulaGanadora.disponible || !data.formulaGanadora.perfilGanador ? (
           <EmptyState
             icon={Trophy}
-            title="Todavía no hay suficiente data por marca"
-            desc="Cargá posteos con métricas en Campañas → Contenido para al menos 3 creadores de una marca — así esta sección puede calcular qué perfil funciona mejor."
+            title="Todavía no hay suficientes creadores activos"
+            desc="Necesitás al menos 3 creadores en estado Activo dentro de campañas activas para que esta sección pueda calcular un perfil ganador."
           />
         ) : (
-          <div className="flex flex-col gap-6">
-            {data.formulaGanadora.map(b => (
-              <div key={b.brandId} className="flex flex-col gap-3">
-                <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-                  <Trophy className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--color-brand)' }} />
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>{b.brandName}</p>
-                    <p className="text-[11px]" style={{ color: 'var(--color-text-3)' }}>
-                      Perfil ganador (basado en {b.perfilGanador.basadoEnCreadores} creadores)
-                      {b.perfilGanador.etiquetas.length > 0 && ` · ${b.perfilGanador.etiquetas.join(', ')}`}
-                      {b.perfilGanador.categoria && ` · ${b.perfilGanador.categoria}`}
-                      {b.perfilGanador.seguidoresTier && ` · ${b.perfilGanador.seguidoresTier}`}
-                      {` · ${b.perfilGanador.platform === 'tiktok' ? 'TikTok' : 'Instagram'}`}
-                    </p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {b.recomendados.map(c => <FormulaCard key={c.creatorId} c={c} />)}
-                </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+              <Trophy className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--color-brand)' }} />
+              <div className="min-w-0">
+                <p className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>Perfil ganador</p>
+                <p className="text-[11px]" style={{ color: 'var(--color-text-3)' }}>
+                  Basado en {data.formulaGanadora.perfilGanador.basadoEnCreadores} creadores Activo en campañas activas
+                  {data.formulaGanadora.perfilGanador.avgEngagementRateInstagram != null && ` · ER promedio en Instagram ${data.formulaGanadora.perfilGanador.avgEngagementRateInstagram.toFixed(1)}%`}
+                  {data.formulaGanadora.perfilGanador.avgEngagementRateTiktok != null && ` · ER promedio en TikTok ${data.formulaGanadora.perfilGanador.avgEngagementRateTiktok.toFixed(1)}%`}
+                  {data.formulaGanadora.perfilGanador.seguidoresTier && ` · ${data.formulaGanadora.perfilGanador.seguidoresTier}`}
+                </p>
               </div>
-            ))}
+            </div>
+            {data.formulaGanadora.recomendados.length === 0 ? (
+              <EmptyState
+                icon={Trophy}
+                title="Sin candidatos por ahora"
+                desc="Ningún creador Pendiente superó el mínimo de similitud contra el perfil ganador actual."
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {data.formulaGanadora.recomendados.map(c => (
+                  <FormulaCard
+                    key={c.creatorId} c={c}
+                    onClick={() => openDetalle(c.creatorId, {
+                      titulo: 'Por qué aparece en Fórmula ganadora',
+                      razon: c.razon,
+                      rows: c.breakdown,
+                    })}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )
       ) : section === 'en-alza' ? (
@@ -348,7 +627,16 @@ export default function RecomendacionesTab() {
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {data.enAlza.creadores.map(c => <EnAlzaCard key={c.creatorId} c={c} />)}
+            {data.enAlza.creadores.map(c => (
+              <EnAlzaCard
+                key={c.creatorId} c={c}
+                onClick={() => openDetalle(c.creatorId, {
+                  titulo: 'Por qué aparece en En alza',
+                  razon: c.razon,
+                  rows: c.breakdown,
+                })}
+              />
+            ))}
           </div>
         )
       ) : (
@@ -360,9 +648,35 @@ export default function RecomendacionesTab() {
           />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {data.exColaboradores.map(c => <ExColaboradorCard key={c.creatorId} c={c} />)}
+            {data.exColaboradores.map(c => (
+              <ExColaboradorCard
+                key={c.creatorId} c={c}
+                onClick={() => openDetalle(c.creatorId, {
+                  titulo: 'Por qué aparece en Ex-colaboradores',
+                  razon: c.razon,
+                  rows: [
+                    { label: 'ER promedio', value: c.avgEngagementRate != null ? `${c.avgEngagementRate}%` : null, pts: null, max: null },
+                    { label: 'Interacciones totales', value: c.totalInteracciones > 0 ? c.totalInteracciones.toLocaleString('es-PE') : null, pts: null, max: null },
+                    { label: 'Posteos con métricas', value: `${c.totalPosts}`, pts: null, max: null },
+                    { label: 'Marcas con las que trabajó', value: c.brandsHistoricos.length ? c.brandsHistoricos.join(', ') : null, pts: null, max: null },
+                  ],
+                })}
+              />
+            ))}
           </div>
         )
+      )}
+
+      {selected && (
+        <UGCDrawer
+          ugc={selected.ugc}
+          campanas={campanas}
+          recomendacionContext={selected.context}
+          onClose={() => setSelected(null)}
+          onAsignar={onAsignar}
+          onUpdateUGC={onUpdateUGC}
+          onGoToChat={onGoToChat}
+        />
       )}
     </div>
   );

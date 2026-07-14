@@ -187,11 +187,27 @@ export interface Campana {
 // ─── Recomendaciones ──────────────────────────────────────────────────────────
 
 export interface PerfilGanador {
-  etiquetas: string[];
-  categoria: string | null;
+  /**
+   * ER e IG/TikTok se muestran por separado a propósito: las dos plataformas
+   * tienen escalas de engagement muy distintas (TikTok suele ser mucho más
+   * alto), mezclarlas en un solo promedio da un número irreal.
+   */
+  avgEngagementRateInstagram: number | null;
+  avgEngagementRateTiktok: number | null;
+  /** Vistas promedio por posteo como proporción de los seguidores (0-1+), por plataforma */
+  avgViewsRatioInstagram: number | null;
+  avgViewsRatioTiktok: number | null;
   seguidoresTier: string | null;
   platform: 'instagram' | 'tiktok';
   basadoEnCreadores: number;
+}
+
+/** Una fila del desglose "por qué aparece este creador" — pts/max null = fila informativa, sin barra de puntos. */
+export interface RecomendacionBreakdownRow {
+  label: string;
+  value: string | null;
+  pts: number | null;
+  max: number | null;
 }
 
 export interface CreadorRecomendado {
@@ -200,15 +216,16 @@ export interface CreadorRecomendado {
   username: string | null;
   score: number;
   seguidoresDisplay: string | null;
-  etiquetas: string[];
+  engagementRate: number | null;
   similarityScore: number;
   razon: string;
+  breakdown: RecomendacionBreakdownRow[];
 }
 
-export interface FormulaGanadoraMarca {
-  brandId: string;
-  brandName: string;
-  perfilGanador: PerfilGanador;
+export interface FormulaGanadoraResultado {
+  /** false hasta que haya al menos 3 creadores Activo en campañas activas */
+  disponible: boolean;
+  perfilGanador: PerfilGanador | null;
   recomendados: CreadorRecomendado[];
 }
 
@@ -223,6 +240,7 @@ export interface CreadorEnAlza {
   razon: string;
   capturedAtPrev: string;
   capturedAtLatest: string;
+  breakdown: RecomendacionBreakdownRow[];
 }
 
 export interface ExColaborador {
@@ -237,7 +255,7 @@ export interface ExColaborador {
 }
 
 export interface RecomendacionesResponse {
-  formulaGanadora: FormulaGanadoraMarca[];
+  formulaGanadora: FormulaGanadoraResultado;
   enAlza: { disponible: boolean; creadores: CreadorEnAlza[] };
   exColaboradores: ExColaborador[];
 }

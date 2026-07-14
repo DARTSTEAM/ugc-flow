@@ -152,6 +152,11 @@ export default function App() {
   }, []);
 
   // ── UGC handlers ─────────────────────────────────────────────────
+  /** El creador ya fue persistido por POST /api/creators; acá solo se refleja en el estado local. */
+  function handleAddUGC(ugc: UGC) {
+    setUGCs(prev => [ugc, ...prev]);
+  }
+
   function handleUpdateUGC(ugc: UGC) {
     // Update UI immediately so derived state (allEtiquetas, etc.) stays fresh
     setUGCs(prev => {
@@ -536,7 +541,7 @@ export default function App() {
               <UGCsTab
                 ugcs={ugcs}
                 campanas={campanas}
-                onAddUGC={() => {}}
+                onAddUGC={handleAddUGC}
                 onUpdateUGC={handleUpdateUGC}
                 onDeleteUGC={handleDeleteUGC}
                 onGoToChat={goToChat}
@@ -547,7 +552,7 @@ export default function App() {
               <UGCsTab
                 ugcs={ugcs}
                 campanas={campanas}
-                onAddUGC={() => {}}
+                onAddUGC={handleAddUGC}
                 onUpdateUGC={handleUpdateUGC}
                 onDeleteUGC={handleDeleteUGC}
                 onGoToChat={goToChat}
@@ -578,7 +583,15 @@ export default function App() {
             } />
             <Route path="/chats" element={<ChatsTab ugcs={ugcs} onUpdateUGC={handleUpdateUGC} />} />
             <Route path="/chats/:ugcId" element={<ChatsTab ugcs={ugcs} onUpdateUGC={handleUpdateUGC} />} />
-            <Route path="/recomendaciones" element={<RecomendacionesTab />} />
+            <Route path="/recomendaciones" element={
+              <RecomendacionesTab
+                ugcs={ugcs}
+                campanas={campanas}
+                onUpdateUGC={handleUpdateUGC}
+                onGoToChat={goToChat}
+                onAsignar={handleAsignarCampana}
+              />
+            } />
             <Route path="/testagent" element={<TestAgentTab />} />
             <Route path="/perfil" element={<ProfileView onSaved={setProfile} />} />
             <Route path="*" element={<Navigate to="/ugcs" replace />} />

@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom';
 import {
   X, MessageCircle, TrendingUp, Award, ChevronRight,
   Loader2, RefreshCw, AlertTriangle, CheckCircle2, BarChart2, Tv2, Pencil,
-  ChevronDown, Plus, HelpCircle, Megaphone, Link2, ExternalLink,
+  ChevronDown, Plus, HelpCircle, Megaphone, Link2, ExternalLink, Sparkles,
 } from 'lucide-react';
-import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EstadoUGC, ContenidoCampana } from '../data';
+import type { UGC, Campana, EvaluacionOrganica, EvaluacionPauta, EstadoUGC, ContenidoCampana, RecomendacionBreakdownRow } from '../data';
 import tiktokLogo from '../assets/tiktok-logo.png';
 import instagramLogo from '../assets/instagram-logo.png';
 import { scoreColor, ESTADO_UGC_CONFIG, getInitials, avatarColor, needsInfoUpdate, formatLastScraped } from '../utils';
@@ -13,10 +13,18 @@ import { fetchCreatorDetail, updateCreator, updateEtiquetas, updateEvaluacionOrg
 
 type DrawerTab = 'Perfil' | 'Contenido Orgánico' | 'Pauta' | 'Campañas';
 
+/** Contexto opcional: si el drawer se abrió desde una card de Recomendaciones, muestra por qué apareció. */
+export interface RecomendacionDrawerContext {
+  titulo: string;
+  razon: string;
+  rows: RecomendacionBreakdownRow[];
+}
+
 interface Props {
   ugc: UGC;
   campanas: Campana[];
   initialTab?: DrawerTab;
+  recomendacionContext?: RecomendacionDrawerContext;
   onClose: () => void;
   onAsignar: (ugc: UGC, campanaId: string) => void;
   onUpdateUGC: (ugc: UGC) => void;
@@ -258,7 +266,7 @@ function MetricRow({ label, value, unit, tooltip }: { label: string; value: stri
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export default function UGCDrawer({
-  ugc: ugcProp, campanas, initialTab = 'Perfil',
+  ugc: ugcProp, campanas, initialTab = 'Perfil', recomendacionContext,
   onClose, onAsignar, onUpdateUGC, onGoToChat,
 }: Props) {
   const [ugc, setUgc] = useState<UGC>(ugcProp);
@@ -1056,6 +1064,38 @@ export default function UGCDrawer({
               </div>
             </div>
           </div>
+
+          {/* Por qué aparece en Recomendaciones (sólo si el drawer se abrió desde ahí) */}
+          {recomendacionContext && (
+            <div className="rounded-xl overflow-hidden border mt-3" style={{ backgroundColor: 'var(--color-brand-light)', borderColor: 'var(--color-brand)' }}>
+              <div className="p-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--color-brand)' }} />
+                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-brand-hover)' }}>
+                    {recomendacionContext.titulo}
+                  </span>
+                </div>
+                <div className="space-y-1 pl-2 border-l mb-2" style={{ borderColor: 'rgba(252,154,0,0.3)' }}>
+                  {recomendacionContext.rows.map((row, i) => (
+                    <div key={i} className="flex justify-between items-center gap-2">
+                      <span className="text-[10px]" style={{ color: 'var(--color-text-2)' }}>{row.label}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {row.value != null && <span className="text-[10px] font-mono" style={{ color: 'var(--color-text-2)' }}>{row.value}</span>}
+                        {row.pts != null && row.max != null && (
+                          <span className="text-[10px] font-mono font-bold" style={{ color: row.pts > 0 ? 'var(--color-text-1)' : 'var(--color-text-3)' }}>
+                            {row.pts}/{row.max}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] leading-relaxed pt-2 border-t" style={{ borderColor: 'rgba(252,154,0,0.25)', color: 'var(--color-text-2)' }}>
+                  {recomendacionContext.razon}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Tab bar */}

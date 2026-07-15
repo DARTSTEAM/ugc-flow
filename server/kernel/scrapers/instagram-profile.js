@@ -70,6 +70,7 @@ export async function scrapeInstagramProfile(handle) {
         seguidores,
         categoria: user.category_name ?? user.business_category_name ?? user.category ?? null,
         bio: user.biography ?? null,
+        externalUrl: user.external_url ?? null,
       };
       resolveUser();
     }
@@ -244,7 +245,7 @@ export async function scrapeInstagramProfile(handle) {
       console.log(`[Kernel] Network capture failed for "${handle}" — trying DOM fallback`);
       const fromDom = await extractFromPageContext(page);
       if (fromDom) {
-        capturedUser = { nombre: fromDom.nombre, seguidores: fromDom.seguidores, categoria: fromDom.categoria, bio: fromDom.bio ?? null };
+        capturedUser = { nombre: fromDom.nombre, seguidores: fromDom.seguidores, categoria: fromDom.categoria, bio: fromDom.bio ?? null, externalUrl: fromDom.externalUrl ?? null };
         if (fromDom.posts?.length && capturedPosts === undefined) capturedPosts = fromDom.posts;
       }
     }
@@ -330,6 +331,7 @@ export async function scrapeInstagramProfile(handle) {
       promedioVistaVideos,
       categoria:            capturedUser.categoria,
       bio:                  capturedUser.bio ?? null,
+      externalUrl:          capturedUser.externalUrl ?? null,
       rangoEdadSeguidores:  null,
       frecuenciaSemanal,
       videosVirales,
@@ -418,6 +420,7 @@ async function extractFromPageContext(page) {
       seguidores,
       categoria: rawUser.category_name ?? rawUser.category ?? null,
       bio:       rawUser.biography ?? null,
+      externalUrl: rawUser.external_url ?? null,
       posts,
     };
   } catch (err) {

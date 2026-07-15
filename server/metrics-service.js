@@ -25,10 +25,62 @@ export function tieneMetricas(row) {
 }
 
 /**
+ * Ranking de Creadores: agrupa las piezas con métricas por creador (a diferencia
+ * de topContenidos, que es por posteo individual). El sentimiento no vive en
+ * campaign_content — se pasa aparte, ya agregado por creador (ver
+ * server/sentiment-service.js + tabla campaign_creator_sentiment).
+ *
+ * @param {Array<object>} conMetricas   filas de campaign_content con ≥1 métrica scrapeada
+ * @param {Map<string, {positive:number, sampleSize:number}>} sentimentByCreator
+ */
+function computeTopCreadores(conMetricas, sentimentByCreator) {
+  const byCreator = new Map();
+  for (const r of conMetricas) {
+    if (!byCreator.has(r.creator_id)) {
+      byCreator.set(r.creator_id, {
+        creatorId: r.creator_id,
+        nombre: r.creator_nombre || r.creator_id,
+        views: 0, vistasDisponibles: false,
+        likes: 0, comments: 0, shares: 0, saves: 0,
+      });
+    }
+    const c = byCreator.get(r.creator_id);
+    c.views += num(r.org_views);
+    if (r.org_views != null) c.vistasDisponibles = true;
+    c.likes += num(r.org_likes);
+    c.comments += num(r.org_comments);
+    c.shares += num(r.org_shares);
+    c.saves += num(r.org_saves);
+  }
+
+  return [...byCreator.values()]
+    .map(c => {
+      const interacciones = c.likes + c.comments + c.shares + c.saves;
+      const engagementRate = c.views > 0 ? parseFloat(((interacciones / c.views) * 100).toFixed(2)) : null;
+      const sentimiento = sentimentByCreator?.get(c.creatorId) ?? null;
+      return {
+        creatorId: c.creatorId,
+        nombre: c.nombre,
+        views: c.vistasDisponibles ? c.views : null,
+        likes: c.likes,
+        comments: c.comments,
+        shares: c.shares,
+        saves: c.saves,
+        interacciones,
+        engagementRate,
+        sentimentPositive: sentimiento?.positive ?? null,
+        sentimentSampleSize: sentimiento?.sampleSize ?? 0,
+      };
+    })
+    .sort((a, b) => (b.views ?? -1) - (a.views ?? -1));
+}
+
+/**
  * @param {Array<object>} rows   filas de campaign_content (ya con nombre de creador y categoría adjuntos)
+ * @param {Map<string, {positive:number, sampleSize:number}>} [sentimentByCreator]  sentimiento agregado por creador (campaign_creator_sentiment)
  * @returns {object} MetricasCampana (o null si no hay piezas con métricas)
  */
-export function computeCampaignMetrics(rows) {
+export function computeCampaignMetrics(rows, sentimentByCreator) {
   const conMetricas = rows.filter(tieneMetricas);
   if (!conMetricas.length) return null;
 
@@ -79,5 +131,6 @@ export function computeCampaignMetrics(rows) {
     engagementRate,
     vistasDisponibles,
     topContenidos,
+    topCreadores: computeTopCreadores(conMetricas, sentimentByCreator),
   };
 }

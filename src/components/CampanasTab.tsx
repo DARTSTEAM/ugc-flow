@@ -44,6 +44,7 @@ function CampanaCard({ campana, cardBg, cardBorder, onSelect }: {
   const pendientes    = campana.ugcs.filter(u => u.estado === 'Pendiente').length;
   const activos        = campana.ugcs.filter(u => u.estado === 'Activo').length;
   const enNegociacion  = campana.ugcs.filter(u => u.estado === 'En Negociación').length;
+  const disponibles    = campana.ugcs.filter(u => u.estado === 'Disponible').length;
   const descartados    = campana.ugcs.filter(u => u.estado === 'Descartado').length;
 
   return (
@@ -83,13 +84,14 @@ function CampanaCard({ campana, cardBg, cardBorder, onSelect }: {
         </div>
       </div>
 
-      {/* Stats — 4 en una fila si el ancho real de la card lo permite (container query),
-          si no, 2 arriba y 2 abajo para que nunca se corten ni se salgan del borde. */}
-      <div className="grid grid-cols-2 @md:grid-cols-4 gap-2">
+      {/* Stats — 5 en una fila si el ancho real de la card lo permite (container query),
+          si no, 2-3 por fila para que nunca se corten ni se salgan del borde. */}
+      <div className="grid grid-cols-2 @md:grid-cols-5 gap-2">
         {[
           { label: 'Pendientes',       value: pendientes },
-          { label: 'Activos',          value: activos },
           { label: 'En Negociación',   value: enNegociacion },
+          { label: 'Disponibles',      value: disponibles },
+          { label: 'Activos',          value: activos },
           { label: 'Descartados',      value: descartados },
         ].map(s => (
           <div key={s.label} className="min-w-0 p-2 rounded-xl text-center" style={{ backgroundColor: 'rgba(0,0,0,0.05)' }}>

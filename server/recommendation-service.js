@@ -3,8 +3,9 @@
  * 1:1 de una tabla: cruza creators + campaign_content + campaign_creators
  * para producir 3 secciones reales:
  *
- *  - Fórmula ganadora: perfil de los creadores Activo en campañas activas
- *    (sin segmentar por marca), matcheado contra candidatos Pendiente.
+ *  - Top Creadores: ranking histórico ponderado cruzando todas las campañas
+ *    Cerradas del grupo — score de perfil (60/25/15 existente) 50% + ranking
+ *    de rendimiento real (percentil de ER real dentro de su misma plataforma) 50%.
  *  - En alza (momentum): compara los últimos 2 snapshots de cada creador.
  *  - Ex-colaboradores mejorado: creators.estado='Inactivo', rankeados por
  *    performance real en campaign_content en vez de sólo "trabajó una vez".
@@ -18,257 +19,138 @@ function q(sql, params, types) {
   return bq.query({ query: sql, params, types, location: 'US' }).then(([rows]) => rows);
 }
 
-// ─── Tiers de seguidores (mismos cortes que score-calculator.js scoreSeguidores) ──
-const SEGUIDORES_TIERS = [
-  { min: 100_000, label: '100k+' },
-  { min: 50_000, label: '50k-100k' },
-  { min: 20_000, label: '20k-50k' },
-  { min: 10_000, label: '10k-20k' },
-  { min: 0, label: '0-10k' },
-];
+const MAX_TOP_CREADORES = 12;
 
-function tierDe(seguidores) {
-  if (seguidores == null) return null;
-  return SEGUIDORES_TIERS.find(t => seguidores >= t.min).label;
-}
-
-function seguidoresDe(c) {
-  if (c.eval_perfil_seguidores != null) return Number(c.eval_perfil_seguidores);
-  if (c.tiktok_eval_seguidores != null) return Number(c.tiktok_eval_seguidores);
-  return null;
+function platformLabel(p) {
+  return p === 'tiktok' ? 'TikTok' : p === 'instagram' ? 'Instagram' : p;
 }
 
 /**
- * Plataforma con datos COMPLETOS de ER + vistas (nunca mezcla ER de una
- * plataforma con vistas de otra). El scrape de Instagram frecuentemente no
- * logra capturar vistas (falla silenciosa de la pestaña /reels/) aunque sí
- * haya sacado el ER — sin este chequeo, esos perfiles a medio escrapear
- * entraban igual al promedio y lo distorsionaban. Prefiere Instagram cuando
- * ambas plataformas están completas, igual que el resto de la app.
- */
-function platformCompletaParaMetricas(c) {
-  if (c.eval_perfil_engagement_rate_cuenta != null && c.eval_perfil_promedio_vistas != null) return 'instagram';
-  if (c.tiktok_eval_engagement_rate != null && c.tiktok_eval_promedio_vistas != null) return 'tiktok';
-  return null;
-}
-
-function erDe(c) {
-  const plat = platformCompletaParaMetricas(c);
-  if (plat === 'instagram') return Number(c.eval_perfil_engagement_rate_cuenta);
-  if (plat === 'tiktok') return Number(c.tiktok_eval_engagement_rate);
-  return null;
-}
-
-/** Vistas promedio como proporción de los seguidores — evita duplicar la señal de tamaño de audiencia que ya cubre el tier. */
-function viewsRatioDe(c) {
-  const plat = platformCompletaParaMetricas(c);
-  if (!plat) return null;
-  const views = plat === 'instagram' ? c.eval_perfil_promedio_vistas : c.tiktok_eval_promedio_vistas;
-  const seguidores = plat === 'instagram' ? c.eval_perfil_seguidores : c.tiktok_eval_seguidores;
-  if (views == null || !seguidores) return null;
-  return Number(views) / Number(seguidores);
-}
-
-function avg(nums) {
-  const vals = nums.filter(n => n != null);
-  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-}
-
-// ─── Umbrales editoriales (valores iniciales, ajustar con uso real — ver plan) ──
-const MIN_CREADORES_PARA_PERFIL = 3;   // mínimo de creadores Activo en campañas activas para armar un perfil
-const MAX_TOP_PERFORMERS = 8;          // si el pool es más grande, se prioriza por ER real de campaign_content
-const MAX_RECOMENDADOS = 12;
-const SIMILARITY_MIN_THRESHOLD = 20;   // score de similitud mínimo para aparecer
-
-/**
- * Sección "Fórmula ganadora": un único perfil derivado de los creadores que
- * HOY están Activo en alguna campaña con status 'active' — sin segmentar por
- * marca. Cuando el pool es grande, se prioriza por ER real (campaign_content)
- * si existe; si no, se usan igual (evita que la sección quede vacía por falta
- * de contenido cargado, que es la limitación que tenía la versión por marca).
+ * Sección "Top Creadores": ranking histórico ponderado cruzando TODAS las
+ * campañas Cerradas (status='completed') del grupo. A diferencia de la vieja
+ * "Fórmula ganadora" (que matcheaba candidatos Pendiente contra un perfil),
+ * esto rankea directamente a los creadores que YA trabajaron y demostraron
+ * rendimiento real — no recomienda gente nueva sin probar.
  *
- * La similitud se mide contra métricas que SÍ se recalculan en cada refresh
- * de Kernel (ER de cuenta, alcance por posteo, tier de seguidores, plataforma).
- * Etiquetas/categoría quedaron afuera a propósito: etiquetas es un campo
- * 100% manual que el refresh nunca toca, y categoría es sólo la clasificación
- * genérica de negocio que asigna Instagram — ninguna de las dos refleja
- * performance real.
+ * finalScore = score de perfil (60/25/15 existente) 50% + performanceIndex 50%.
+ * performanceIndex = percentil del ER real promedio del creador DENTRO de su
+ * misma plataforma (nunca se compara ER de Instagram contra ER de TikTok —
+ * mismo criterio que el resto de este archivo). Sin campaign_content real en
+ * una campaña terminada, el creador no entra: esta sección mide performance
+ * comprobada, no sólo participación.
  */
-async function getFormulaGanadora() {
-  const [creators, activePool, contentRows] = await Promise.all([
+async function getTopCreadores() {
+  const [poolRows, contentRows, creators, brands] = await Promise.all([
     q(`
-      SELECT creator_id, full_name, username, score, seguidores_display, estado,
-             eval_perfil_seguidores, eval_perfil_engagement_rate_cuenta, eval_perfil_promedio_vistas,
-             tiktok_eval_seguidores, tiktok_eval_engagement_rate, tiktok_eval_promedio_vistas
-      FROM ${DATASET}.creators
-    `),
-    q(`
-      SELECT DISTINCT cc.creator_id
+      SELECT DISTINCT cc.creator_id, cc.campaign_id, cc.brand_id
       FROM ${DATASET}.campaign_creators cc
       JOIN ${DATASET}.campaigns camp ON cc.campaign_id = camp.campaign_id
-      WHERE cc.estado = 'Activo' AND camp.status = 'active'
+      WHERE cc.estado = 'Activo' AND camp.status = 'completed'
     `),
     q(`
-      SELECT creator_id, org_engagement_rate
-      FROM ${DATASET}.campaign_content
-      WHERE org_engagement_rate IS NOT NULL
+      SELECT cont.creator_id, cont.campaign_id, cont.platform, cont.org_engagement_rate,
+             cont.org_likes, cont.org_comments, cont.org_shares, cont.org_saves
+      FROM ${DATASET}.campaign_content cont
+      JOIN ${DATASET}.campaigns camp ON cont.campaign_id = camp.campaign_id
+      WHERE cont.org_engagement_rate IS NOT NULL AND camp.status = 'completed'
     `),
+    q(`SELECT creator_id, full_name, username, score, seguidores_display FROM ${DATASET}.creators`),
+    q(`SELECT brand_id, name FROM ${DATASET}.brands`),
   ]);
 
+  if (!poolRows.length) return { disponible: false, creadores: [] };
+
+  const brandNameById = new Map(brands.map(b => [b.brand_id, b.name]));
   const creatorById = new Map(creators.map(c => [c.creator_id, c]));
 
-  const erByCreator = new Map();
-  contentRows.forEach(r => {
-    if (!erByCreator.has(r.creator_id)) erByCreator.set(r.creator_id, []);
-    erByCreator.get(r.creator_id).push(Number(r.org_engagement_rate));
+  const poolKeys = new Set(poolRows.map(r => `${r.creator_id}|${r.campaign_id}`));
+  const campanasByCreator = new Map();
+  const brandsByCreator = new Map();
+  poolRows.forEach(r => {
+    if (!campanasByCreator.has(r.creator_id)) campanasByCreator.set(r.creator_id, new Set());
+    campanasByCreator.get(r.creator_id).add(r.campaign_id);
+    if (!brandsByCreator.has(r.creator_id)) brandsByCreator.set(r.creator_id, new Set());
+    brandsByCreator.get(r.creator_id).add(brandNameById.get(r.brand_id) || r.brand_id);
   });
 
-  const poolIds = activePool.map(r => r.creator_id).filter(id => creatorById.has(id));
-  if (poolIds.length < MIN_CREADORES_PARA_PERFIL) {
-    return { disponible: false, perfilGanador: null, recomendados: [] };
+  // Por creador, agrupado por plataforma — nunca se promedia ER de IG con ER de TikTok junto.
+  const platformStatsByCreator = new Map();
+  contentRows
+    .filter(r => poolKeys.has(`${r.creator_id}|${r.campaign_id}`))
+    .forEach(r => {
+      if (!platformStatsByCreator.has(r.creator_id)) platformStatsByCreator.set(r.creator_id, new Map());
+      const byPlat = platformStatsByCreator.get(r.creator_id);
+      const plat = r.platform || 'desconocida';
+      if (!byPlat.has(plat)) byPlat.set(plat, { ers: [], interacciones: 0, posts: 0 });
+      const s = byPlat.get(plat);
+      s.ers.push(Number(r.org_engagement_rate));
+      s.interacciones += (r.org_likes ?? 0) + (r.org_comments ?? 0) + (r.org_shares ?? 0) + (r.org_saves ?? 0);
+      s.posts += 1;
+    });
+
+  // Plataforma primaria de cada creador = la que tiene más posteos con datos reales.
+  const perCreator = [];
+  for (const [creatorId, byPlat] of platformStatsByCreator.entries()) {
+    const c = creatorById.get(creatorId);
+    if (!c) continue;
+    const [primaryPlatform, primaryStats] = [...byPlat.entries()].sort((a, b) => b[1].posts - a[1].posts)[0];
+    const avgEr = parseFloat((primaryStats.ers.reduce((a, b) => a + b, 0) / primaryStats.ers.length).toFixed(2));
+    const totalPosts = [...byPlat.values()].reduce((sum, s) => sum + s.posts, 0);
+    const totalInteracciones = [...byPlat.values()].reduce((sum, s) => sum + s.interacciones, 0);
+    perCreator.push({
+      creatorId, c, primaryPlatform, avgEr, totalPosts, totalInteracciones,
+      totalCampanasTerminadas: campanasByCreator.get(creatorId)?.size ?? 0,
+      marcas: [...(brandsByCreator.get(creatorId) || [])],
+    });
   }
 
-  let topPerformers = poolIds.map(id => creatorById.get(id));
-  if (topPerformers.length > MAX_TOP_PERFORMERS) {
-    topPerformers = topPerformers
-      .map(c => {
-        const ers = erByCreator.get(c.creator_id);
-        const avgEr = ers?.length ? ers.reduce((a, b) => a + b, 0) / ers.length : -1; // sin datos → al final
-        return { c, avgEr };
-      })
-      .sort((a, b) => b.avgEr - a.avgEr)
-      .slice(0, MAX_TOP_PERFORMERS)
-      .map(x => x.c);
-  }
+  if (!perCreator.length) return { disponible: false, creadores: [] };
 
-  // ── Perfil ganador derivado de todo el pool ──
-  // ER de Instagram y de TikTok viven en escalas totalmente distintas (TikTok
-  // suele andar en 5-15%+, Instagram en cuentas grandes baja de 1-4%) — mezclar
-  // ambas en un solo promedio da un número que no representa a ninguna de las
-  // dos y que ningún candidato real puede alcanzar. Se promedia por separado.
-  const igPerformers = topPerformers.filter(c => platformCompletaParaMetricas(c) === 'instagram');
-  const ttPerformers = topPerformers.filter(c => platformCompletaParaMetricas(c) === 'tiktok');
-  const avgEngagementRateIG = avg(igPerformers.map(erDe));
-  const avgEngagementRateTT = avg(ttPerformers.map(erDe));
-  const avgViewsRatioIG = avg(igPerformers.map(viewsRatioDe));
-  const avgViewsRatioTT = avg(ttPerformers.map(viewsRatioDe));
-
-  const tierCounts = new Map();
-  topPerformers.forEach(c => {
-    const tier = tierDe(seguidoresDe(c));
-    if (tier) tierCounts.set(tier, (tierCounts.get(tier) || 0) + 1);
+  // Percentil de avgEr dentro de cada grupo de plataforma.
+  const byPlatform = new Map();
+  perCreator.forEach(x => {
+    if (!byPlatform.has(x.primaryPlatform)) byPlatform.set(x.primaryPlatform, []);
+    byPlatform.get(x.primaryPlatform).push(x);
   });
-  const seguidoresTier = tierCounts.size ? [...tierCounts.entries()].sort((a, b) => b[1] - a[1])[0][0] : null;
-
-  let igCount = 0, ttCount = 0;
-  topPerformers.forEach(c => {
-    if (c.eval_perfil_seguidores != null) igCount++;
-    if (c.tiktok_eval_seguidores != null) ttCount++;
+  byPlatform.forEach(group => {
+    const sorted = [...group].sort((a, b) => a.avgEr - b.avgEr);
+    sorted.forEach((x, i) => {
+      x.performanceIndex = sorted.length > 1 ? Math.round((i / (sorted.length - 1)) * 100) : 50;
+    });
   });
-  const platform = ttCount > igCount ? 'tiktok' : 'instagram';
 
-  // ── Candidatos: Pendiente (todavía sin ninguna relación vigente) ──
-  const candidatos = creators.filter(c => c.estado === 'Pendiente');
-
-  const tierIdxOf = label => SEGUIDORES_TIERS.findIndex(t => t.label === label);
-  const targetTierIdx = seguidoresTier ? tierIdxOf(seguidoresTier) : -1;
-
-  const scored = candidatos
-    .map(c => {
-      // Comparar siempre contra el promedio DE SU MISMA plataforma — nunca un IG contra un benchmark de TikTok o viceversa.
-      const cPlat = platformCompletaParaMetricas(c);
-      const targetAvgER = cPlat === 'instagram' ? avgEngagementRateIG : cPlat === 'tiktok' ? avgEngagementRateTT : null;
-      const targetAvgViews = cPlat === 'instagram' ? avgViewsRatioIG : cPlat === 'tiktok' ? avgViewsRatioTT : null;
-
-      const cER = erDe(c);
-      let erScore = 0;
-      if (targetAvgER != null && cER != null) {
-        erScore = Math.max(0, Math.min(40, 40 - Math.abs(cER - targetAvgER) * 10));
-      }
-
-      const cViewsRatio = viewsRatioDe(c);
-      let vistasScore = 0;
-      if (targetAvgViews != null && cViewsRatio != null && (targetAvgViews > 0 || cViewsRatio > 0)) {
-        const mayor = Math.max(targetAvgViews, cViewsRatio);
-        const menor = Math.min(targetAvgViews, cViewsRatio);
-        vistasScore = mayor > 0 ? Math.round(20 * (menor / mayor)) : 0;
-      }
-
-      const cTier = tierDe(seguidoresDe(c));
-      let tierScore = 0;
-      if (cTier && seguidoresTier) {
-        if (cTier === seguidoresTier) tierScore = 25;
-        else if (Math.abs(tierIdxOf(cTier) - targetTierIdx) === 1) tierScore = 10;
-      }
-
-      const hasPlatformData = platform === 'tiktok' ? c.tiktok_eval_seguidores != null : c.eval_perfil_seguidores != null;
-      const platformScore = hasPlatformData ? 15 : 0;
-
-      const similarityScore = Math.round(erScore + vistasScore + tierScore + platformScore);
-
-      const platLabel = cPlat === 'tiktok' ? 'TikTok' : cPlat === 'instagram' ? 'Instagram' : null;
-
-      const razonParts = [];
-      if (erScore >= 25) razonParts.push(`ER de cuenta similar (${cER.toFixed(1)}% vs ${targetAvgER.toFixed(1)}% de tus creadores en ${platLabel})`);
-      if (vistasScore >= 12) razonParts.push('Alcance por posteo similar al de tus creadores activos');
-      if (tierScore === 25) razonParts.push(`Mismo rango de seguidores (${cTier})`);
-      else if (tierScore === 10) razonParts.push(`Rango de seguidores cercano (${cTier})`);
-      if (!razonParts.length) razonParts.push('Perfil similar a tus creadores activos');
-
-      const breakdown = [
-        {
-          label: 'ER de cuenta similar',
-          value: cER != null
-            ? `${cER.toFixed(1)}% (perfil en ${platLabel}: ${targetAvgER != null ? targetAvgER.toFixed(1) + '%' : 'sin datos'})`
-            : null,
-          pts: Math.round(erScore), max: 40,
-        },
-        {
-          label: 'Alcance por posteo similar',
-          value: cViewsRatio != null ? `${Math.round(cViewsRatio * 100)}% de los seguidores` : null,
-          pts: vistasScore, max: 20,
-        },
-        {
-          label: 'Rango de seguidores',
-          value: cTier,
-          pts: tierScore, max: 25,
-        },
-        {
-          label: 'Plataforma',
-          value: hasPlatformData ? (platform === 'tiktok' ? 'TikTok' : 'Instagram') : null,
-          pts: platformScore, max: 15,
-        },
-      ];
+  const creadores = perCreator
+    .map(x => {
+      const perfilScore = x.c.score || 0;
+      const perfilPts = Math.round(perfilScore * 0.5);
+      const performancePts = Math.round(x.performanceIndex * 0.5);
+      const finalScore = perfilPts + performancePts;
+      const platLabel = platformLabel(x.primaryPlatform);
 
       return {
-        creatorId: c.creator_id,
-        nombre: c.full_name || c.username || c.creator_id,
-        username: c.username || null,
-        score: c.score || 0,
-        seguidoresDisplay: c.seguidores_display || null,
-        engagementRate: cER,
-        similarityScore,
-        razon: razonParts.slice(0, 2).join(' · '),
-        breakdown,
+        creatorId: x.creatorId,
+        nombre: x.c.full_name || x.c.username || x.creatorId,
+        username: x.c.username || null,
+        score: perfilScore,
+        seguidoresDisplay: x.c.seguidores_display || null,
+        avgEngagementRate: x.avgEr,
+        performanceIndex: x.performanceIndex,
+        finalScore,
+        totalPosts: x.totalPosts,
+        totalInteracciones: x.totalInteracciones,
+        totalCampanasTerminadas: x.totalCampanasTerminadas,
+        marcas: x.marcas,
+        razon: `Score de perfil ${perfilScore}/100 · ER real ${x.avgEr.toFixed(1)}% (percentil ${x.performanceIndex} en ${platLabel}) · ${x.totalCampanasTerminadas} campaña${x.totalCampanasTerminadas > 1 ? 's' : ''} terminada${x.totalCampanasTerminadas > 1 ? 's' : ''}`,
+        breakdown: [
+          { label: 'Score de perfil', value: `${perfilScore}/100`, pts: perfilPts, max: 50 },
+          { label: 'Rendimiento real en campañas terminadas', value: `ER promedio ${x.avgEr.toFixed(1)}% (percentil ${x.performanceIndex} en ${platLabel})`, pts: performancePts, max: 50 },
+        ],
       };
     })
-    .filter(c => c.similarityScore >= SIMILARITY_MIN_THRESHOLD)
-    .sort((a, b) => b.similarityScore - a.similarityScore)
-    .slice(0, MAX_RECOMENDADOS);
+    .sort((a, b) => b.finalScore - a.finalScore)
+    .slice(0, MAX_TOP_CREADORES);
 
-  return {
-    disponible: true,
-    perfilGanador: {
-      avgEngagementRateInstagram: avgEngagementRateIG,
-      avgEngagementRateTiktok: avgEngagementRateTT,
-      avgViewsRatioInstagram: avgViewsRatioIG,
-      avgViewsRatioTiktok: avgViewsRatioTT,
-      seguidoresTier,
-      platform,
-      basadoEnCreadores: topPerformers.length,
-    },
-    recomendados: scored,
-  };
+  return { disponible: true, creadores };
 }
 
 /** Sección "Ex-colaboradores mejorado": estado='Inactivo', rankeado por performance real. */
@@ -445,18 +327,18 @@ async function getEnAlza() {
 }
 
 export async function getRecomendaciones() {
-  const [formulaGanadora, enAlza, exColaboradores] = await Promise.all([
-    getFormulaGanadora(),
+  const [topCreadores, enAlza, exColaboradores] = await Promise.all([
+    getTopCreadores(),
     getEnAlza(),
     getExColaboradoresMejorado(),
   ]);
 
-  return { formulaGanadora, enAlza, exColaboradores };
+  return { topCreadores, enAlza, exColaboradores };
 }
 
 // ─── Refresh on-demand (botón "Actualizar tendencias") ──────────────────────
 
-const WATCHLIST_ESTADOS = ['Activo', 'Inactivo', 'En Negociación'];
+const WATCHLIST_ESTADOS = ['Activo', 'Inactivo', 'En Negociación', 'Disponible'];
 const STALE_RUN_MINUTES = 30;  // ~doble del tiempo esperado de una corrida secuencial IG+TikTok
 const COOLDOWN_HOURS = 24;
 

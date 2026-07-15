@@ -1119,7 +1119,7 @@ export default function UGCsTab({ ugcs, campanas, onAddUGC, onUpdateUGC, onDelet
           style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-alt)' }}>
           <span className="text-xs font-mono" style={{ color: 'var(--color-text-3)' }}>{filtered.length} de {ugcs.length} creadores</span>
           <div className="flex gap-3">
-            {['Activo', 'En Negociación', 'Pendiente', 'Inactivo'].map(e => {
+            {['Activo', 'Disponible', 'En Negociación', 'Pendiente', 'Inactivo'].map(e => {
               const count = ugcs.filter(u => u.estado === e).length;
               return (
                 <span key={e} className="text-[10px]" style={{ color: 'var(--color-text-3)' }}>

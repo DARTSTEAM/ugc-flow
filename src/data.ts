@@ -1,9 +1,9 @@
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export type Canal = 'WhatsApp' | 'Instagram';
-export type EstadoUGC = 'Pendiente' | 'Activo' | 'En Negociación' | 'Descartado' | 'Inactivo';
+export type EstadoUGC = 'Pendiente' | 'En Negociación' | 'Disponible' | 'Activo' | 'Descartado' | 'Inactivo';
 export type EstadoCampana = 'Borrador' | 'Activa' | 'Pausada' | 'Cerrada';
-export type EstadoEnCampana = 'Pendiente' | 'Activo' | 'En Negociación' | 'Descartado';
+export type EstadoEnCampana = 'Pendiente' | 'En Negociación' | 'Disponible' | 'Activo' | 'Descartado';
 
 export interface ScoreBreakdown {
   criterio: string;
@@ -143,6 +143,24 @@ export interface MetricasCampana {
     engagementRate: number | null;
     interacciones: number;
   }>;
+  /** Ranking de Creadores: métricas agregadas por creador (todos sus posteos en esta campaña). Ordenado por vistas descendente. */
+  topCreadores: CreadorRanking[];
+}
+
+/** Una fila del Ranking de Creadores dentro del detalle de campaña. */
+export interface CreadorRanking {
+  creatorId: string;
+  nombre: string;
+  views: number | null;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  interacciones: number;
+  engagementRate: number | null;
+  /** % de comentarios positivos (0-100), null si todavía no se corrió "Analizar ahora" tras este cambio. */
+  sentimentPositive: number | null;
+  sentimentSampleSize: number;
 }
 
 /**
@@ -186,22 +204,6 @@ export interface Campana {
 
 // ─── Recomendaciones ──────────────────────────────────────────────────────────
 
-export interface PerfilGanador {
-  /**
-   * ER e IG/TikTok se muestran por separado a propósito: las dos plataformas
-   * tienen escalas de engagement muy distintas (TikTok suele ser mucho más
-   * alto), mezclarlas en un solo promedio da un número irreal.
-   */
-  avgEngagementRateInstagram: number | null;
-  avgEngagementRateTiktok: number | null;
-  /** Vistas promedio por posteo como proporción de los seguidores (0-1+), por plataforma */
-  avgViewsRatioInstagram: number | null;
-  avgViewsRatioTiktok: number | null;
-  seguidoresTier: string | null;
-  platform: 'instagram' | 'tiktok';
-  basadoEnCreadores: number;
-}
-
 /** Una fila del desglose "por qué aparece este creador" — pts/max null = fila informativa, sin barra de puntos. */
 export interface RecomendacionBreakdownRow {
   label: string;
@@ -210,23 +212,31 @@ export interface RecomendacionBreakdownRow {
   max: number | null;
 }
 
-export interface CreadorRecomendado {
+export interface CreadorTop {
   creatorId: string;
   nombre: string;
   username: string | null;
+  /** Score de perfil (0-100, el mismo de siempre — 60% seguidores/ER/frecuencia + 25% orgánico + 15% pauta) */
   score: number;
   seguidoresDisplay: string | null;
-  engagementRate: number | null;
-  similarityScore: number;
+  /** ER real promedio en su plataforma primaria, sólo de campaign_content de campañas Cerradas */
+  avgEngagementRate: number;
+  /** Percentil (0-100) de avgEngagementRate contra pares de su misma plataforma */
+  performanceIndex: number;
+  /** score*0.5 + performanceIndex*0.5, redondeado */
+  finalScore: number;
+  totalPosts: number;
+  totalInteracciones: number;
+  totalCampanasTerminadas: number;
+  marcas: string[];
   razon: string;
   breakdown: RecomendacionBreakdownRow[];
 }
 
-export interface FormulaGanadoraResultado {
-  /** false hasta que haya al menos 3 creadores Activo en campañas activas */
+export interface TopCreadoresResultado {
+  /** false si nadie tiene campaign_content real en una campaña Cerrada todavía */
   disponible: boolean;
-  perfilGanador: PerfilGanador | null;
-  recomendados: CreadorRecomendado[];
+  creadores: CreadorTop[];
 }
 
 export interface CreadorEnAlza {
@@ -255,7 +265,7 @@ export interface ExColaborador {
 }
 
 export interface RecomendacionesResponse {
-  formulaGanadora: FormulaGanadoraResultado;
+  topCreadores: TopCreadoresResultado;
   enAlza: { disponible: boolean; creadores: CreadorEnAlza[] };
   exColaboradores: ExColaborador[];
 }

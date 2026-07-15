@@ -8,7 +8,7 @@ import { getInitials, avatarColor } from '../utils';
 import { fetchRecomendaciones, fetchRefreshStatus, startRecomendacionesRefresh } from '../api';
 import type {
   RecomendacionesResponse, RefreshGateStatus,
-  CreadorRecomendado, CreadorEnAlza, ExColaborador,
+  CreadorTop, CreadorEnAlza, ExColaborador,
   UGC, Campana,
 } from '../data';
 import UGCDrawer, { type RecomendacionDrawerContext } from './UGCDrawer';
@@ -21,7 +21,7 @@ interface Props {
   onGoToChat: (ugc: UGC) => void;
 }
 
-type SectionId = 'formula' | 'en-alza' | 'ex-colaboradores';
+type SectionId = 'top-creadores' | 'en-alza' | 'ex-colaboradores';
 
 const POLL_INTERVAL_MS = 12_000;
 
@@ -41,46 +41,42 @@ interface HelpExample { nombre: string; bullets: HelpPoint[]; total: string; con
 interface SectionHelp { intro: string; steps: HelpStep[]; example: HelpExample; }
 
 const SECTION_HELP: Record<SectionId, SectionHelp> = {
-  formula: {
-    intro: 'Encuentra candidatos nuevos con el perfil de los creadores que hoy están Activo en tus campañas activas.',
+  'top-creadores': {
+    intro: 'Ranking histórico de tus mejores creadores, cruzando todas las campañas ya terminadas.',
     steps: [
       {
         icon: Trophy, colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-600 dark:text-amber-400',
-        title: 'Identifica a los creadores de tus campañas activas',
-        desc: 'Toma a todos los creadores en estado Activo dentro de campañas con status Activa (sin importar la marca). Si son muchos, prioriza por engagement rate real cuando hay contenido cargado en Campañas → Contenido.',
+        title: 'Toma a los que ya trabajaron y terminaron campaña',
+        desc: 'Busca creadores que estuvieron Activo en al menos una campaña con status Cerrada, y que tengan posteos con métricas reales cargados en Campañas → Contenido para esa campaña.',
       },
       {
         icon: Users, colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-600 dark:text-sky-400',
-        title: 'Arma un "perfil ganador"',
-        desc: 'ER de cuenta promedio, alcance por posteo, rango de seguidores y plataforma que esos creadores tienen en común, sin segmentar por marca. Sólo usa métricas que se recalculan solas con cada refresh — nada manual como etiquetas, nada tan genérico como la categoría que asigna Instagram. El ER promedio se calcula por separado en Instagram y en TikTok — mezclarlos daría un número irreal, porque TikTok suele tener engagement mucho más alto que Instagram.',
+        title: 'Mide su rendimiento real',
+        desc: 'Calcula el ER real promedio de sus posteos, comparado contra el resto de los creadores DE SU MISMA plataforma (nunca se compara un ER de Instagram contra uno de TikTok — las escalas son muy distintas). Ese lugar en la comparación es su percentil de rendimiento, de 0 a 100.',
       },
       {
         icon: Sparkles, colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300',
-        title: 'Puntúa a los candidatos nuevos',
-        desc: 'Cada creador en estado Pendiente recibe un score de similitud contra el perfil de SU MISMA plataforma (un candidato de Instagram se compara contra el promedio de Instagram, nunca contra el de TikTok):',
+        title: 'Combina score de perfil + rendimiento real',
+        desc: 'El score final es la suma de dos mitades:',
         points: [
-          { label: 'ER de cuenta similar', value: 'hasta 40pts', colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300' },
-          { label: 'Alcance por posteo similar', value: 'hasta 20pts', colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300' },
-          { label: 'Rango de seguidores', value: '25pts', colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300' },
-          { label: 'Plataforma', value: '15pts', colorClass: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300' },
+          { label: 'Score de perfil (el de siempre: seguidores, ER, frecuencia, orgánico, pauta)', value: 'hasta 50pts', colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300' },
+          { label: 'Percentil de ER real en campañas terminadas', value: 'hasta 50pts', colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300' },
         ],
       },
       {
         icon: CheckCircle2, colorClass: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-600 dark:text-emerald-400',
-        title: 'Filtra el ruido',
-        desc: 'Sólo se muestran los candidatos que superan 20 puntos de similitud, ordenados de mayor a menor.',
+        title: 'Ordena de mayor a menor',
+        desc: 'Se muestran hasta los 12 creadores con mayor score final. Sin métricas reales cargadas, un creador no entra a este ranking — acá se mide performance comprobada, no participación.',
       },
     ],
     example: {
       nombre: 'Camila R. — ejemplo, no es un creador real',
       bullets: [
-        { label: 'ER de cuenta 3.1% vs 2.1% del perfil en Instagram (diferencia de 1pt × 10)', value: '30pts', colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300' },
-        { label: 'Alcance por posteo: 83% de cercanía con el perfil', value: '17pts', colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300' },
-        { label: '35.000 seguidores → mismo rango 20k-50k', value: '25pts', colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-700 dark:text-amber-300' },
-        { label: 'Tiene datos de Instagram (la plataforma del perfil)', value: '15pts', colorClass: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-700 dark:text-emerald-300' },
+        { label: 'Score de perfil 78/100 (78 × 0.5)', value: '39pts', colorClass: 'bg-violet-100 dark:bg-violet-300/10 text-violet-700 dark:text-violet-300' },
+        { label: 'ER real 4.2% → percentil 80 en Instagram (80 × 0.5)', value: '40pts', colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-700 dark:text-sky-300' },
       ],
-      total: '87 / 100 puntos',
-      conclusion: 'Como supera el mínimo de 20 puntos, Camila R. aparecería recomendada — cerca del primer puesto, ordenada por su score de similitud.',
+      total: '79 / 100 puntos',
+      conclusion: 'Camila R. aparecería cerca del primer puesto del ranking, ordenada junto al resto por su score final.',
     },
   },
   'en-alza': {
@@ -89,7 +85,7 @@ const SECTION_HELP: Record<SectionId, SectionHelp> = {
       {
         icon: RefreshCw, colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-600 dark:text-amber-400',
         title: 'Cada actualización guarda una foto',
-        desc: 'Al presionar "Actualizar tendencias" se re-escanea Instagram/TikTok y se guarda una foto fechada (snapshot) de las métricas de cada creador del watchlist (Activo, En Negociación, Inactivo).',
+        desc: 'Al presionar "Actualizar tendencias" se re-escanea Instagram/TikTok y se guarda una foto fechada (snapshot) de las métricas de cada creador del watchlist (Activo, En Negociación, Disponible, Inactivo).',
       },
       {
         icon: TrendingUp, colorClass: 'bg-emerald-50 dark:bg-emerald-300/10 text-emerald-600 dark:text-emerald-400',
@@ -129,7 +125,7 @@ const SECTION_HELP: Record<SectionId, SectionHelp> = {
       {
         icon: RefreshCw, colorClass: 'bg-amber-50 dark:bg-amber-300/10 text-amber-600 dark:text-amber-400',
         title: 'Busca creadores Inactivos',
-        desc: 'Ya trabajaron en alguna campaña (estuvieron Activo), pero hoy no tienen ninguna asignación vigente — ni Activo ni En Negociación en ninguna campaña abierta.',
+        desc: 'Ya trabajaron en alguna campaña (estuvieron Activo), pero hoy no tienen ninguna asignación vigente — ni Activo, ni Disponible, ni En Negociación en ninguna campaña abierta.',
       },
       {
         icon: BarChart3, colorClass: 'bg-sky-50 dark:bg-sky-300/10 text-sky-600 dark:text-sky-400',
@@ -312,15 +308,15 @@ function EmptyState({ icon: Icon, title, desc }: { icon: React.ElementType; titl
   );
 }
 
-function FormulaCard({ c, onClick }: { c: CreadorRecomendado; onClick: () => void }) {
+function TopCreadorCard({ c, onClick }: { c: CreadorTop; onClick: () => void }) {
   return (
     <CardShell onClick={onClick}>
       <CardHeader
         id={c.creatorId} nombre={c.nombre} username={c.username}
-        rightBadge={<span className="font-mono font-bold text-lg flex-shrink-0" style={{ color: 'var(--color-brand)' }}>{c.similarityScore}</span>}
+        rightBadge={<span className="font-mono font-bold text-lg flex-shrink-0" style={{ color: 'var(--color-brand)' }}>{c.finalScore}</span>}
       />
       <div className="h-1.5 rounded-full overflow-hidden mb-3" style={{ backgroundColor: 'var(--color-border)' }}>
-        <div className="h-full rounded-full transition-all" style={{ width: `${c.similarityScore}%`, backgroundColor: 'var(--color-brand)' }} />
+        <div className="h-full rounded-full transition-all" style={{ width: `${c.finalScore}%`, backgroundColor: 'var(--color-brand)' }} />
       </div>
       <div className="flex items-center gap-3 mb-3 text-xs flex-wrap" style={{ color: 'var(--color-text-2)' }}>
         {c.seguidoresDisplay && (
@@ -329,12 +325,14 @@ function FormulaCard({ c, onClick }: { c: CreadorRecomendado; onClick: () => voi
             <span className="font-mono font-semibold">{c.seguidoresDisplay}</span>
           </div>
         )}
-        {c.engagementRate != null && (
-          <div className="flex items-center gap-1">
-            <TrendingUp className="w-3 h-3 flex-shrink-0" />
-            <span className="font-mono font-semibold">{c.engagementRate.toFixed(1)}% ER</span>
-          </div>
-        )}
+        <div className="flex items-center gap-1">
+          <TrendingUp className="w-3 h-3 flex-shrink-0" />
+          <span className="font-mono font-semibold">{c.avgEngagementRate.toFixed(1)}% ER real</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <Chip>{c.totalCampanasTerminadas} campaña{c.totalCampanasTerminadas > 1 ? 's' : ''} terminada{c.totalCampanasTerminadas > 1 ? 's' : ''}</Chip>
+        {c.marcas.slice(0, 2).map(b => <Chip key={b} tone="brand">{b}</Chip>)}
       </div>
       <CardFooter razon={c.razon} />
     </CardShell>
@@ -391,7 +389,7 @@ function ExColaboradorCard({ c, onClick }: { c: ExColaborador; onClick: () => vo
 
 export default function RecomendacionesTab({ ugcs, campanas, onUpdateUGC, onAsignar, onGoToChat }: Props) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const section = (searchParams.get('section') as SectionId | null) ?? 'formula';
+  const section = (searchParams.get('section') as SectionId | null) ?? 'top-creadores';
 
   const [data, setData] = useState<RecomendacionesResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -452,13 +450,13 @@ export default function RecomendacionesTab({ ugcs, campanas, onUpdateUGC, onAsig
     if (result) loadGate();
   }
 
-  const formulaCount = data?.formulaGanadora.recomendados.length ?? 0;
+  const topCreadoresCount = data?.topCreadores.creadores.length ?? 0;
   const enAlzaCount = data?.enAlza.creadores.length ?? 0;
   const exColaboradoresCount = data?.exColaboradores.length ?? 0;
 
   const SECTIONS = [
-    { id: 'formula' as SectionId, label: 'Fórmula ganadora', icon: Trophy, count: formulaCount,
-      desc: 'Perfil de tus creadores Activo en campañas activas, matcheado contra candidatos sin contactar' },
+    { id: 'top-creadores' as SectionId, label: 'Top Creadores', icon: Trophy, count: topCreadoresCount,
+      desc: 'Ranking histórico ponderado — score de perfil + rendimiento real en campañas terminadas' },
     { id: 'en-alza' as SectionId, label: 'En alza', icon: TrendingUp, count: enAlzaCount,
       desc: 'Creadores con crecimiento reciente de seguidores, engagement o videos virales' },
     { id: 'ex-colaboradores' as SectionId, label: 'Ex-colaboradores', icon: RefreshCw, count: exColaboradoresCount,
@@ -508,7 +506,7 @@ export default function RecomendacionesTab({ ugcs, campanas, onUpdateUGC, onAsig
           return (
             <button
               key={sec.id}
-              onClick={() => updateParams({ section: sec.id === 'formula' ? null : sec.id })}
+              onClick={() => updateParams({ section: sec.id === 'top-creadores' ? null : sec.id })}
               className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold border transition-all duration-150 active:scale-[0.97]"
               style={isActive ? {
                 backgroundColor: 'var(--color-brand)', color: '#fff', borderColor: 'var(--color-brand)', boxShadow: 'var(--shadow-btn-brand)',
@@ -569,47 +567,36 @@ export default function RecomendacionesTab({ ugcs, campanas, onUpdateUGC, onAsig
         </div>
       ) : error ? (
         <EmptyState icon={AlertTriangle} title="No se pudieron cargar las recomendaciones" desc={error} />
-      ) : section === 'formula' ? (
-        !data?.formulaGanadora.disponible || !data.formulaGanadora.perfilGanador ? (
+      ) : section === 'top-creadores' ? (
+        !data?.topCreadores.disponible || data.topCreadores.creadores.length === 0 ? (
           <EmptyState
             icon={Trophy}
-            title="Todavía no hay suficientes creadores activos"
-            desc="Necesitás al menos 3 creadores en estado Activo dentro de campañas activas para que esta sección pueda calcular un perfil ganador."
+            title="Todavía no hay creadores con historial real"
+            desc="Esta sección necesita al menos un creador que haya estado Activo en una campaña Cerrada y tenga posteos con métricas cargados en Campañas → Contenido."
           />
         ) : (
           <div className="flex flex-col gap-3">
             <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
               <Trophy className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--color-brand)' }} />
               <div className="min-w-0">
-                <p className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>Perfil ganador</p>
+                <p className="text-sm font-bold" style={{ color: 'var(--color-text-1)' }}>Ranking histórico</p>
                 <p className="text-[11px]" style={{ color: 'var(--color-text-3)' }}>
-                  Basado en {data.formulaGanadora.perfilGanador.basadoEnCreadores} creadores Activo en campañas activas
-                  {data.formulaGanadora.perfilGanador.avgEngagementRateInstagram != null && ` · ER promedio en Instagram ${data.formulaGanadora.perfilGanador.avgEngagementRateInstagram.toFixed(1)}%`}
-                  {data.formulaGanadora.perfilGanador.avgEngagementRateTiktok != null && ` · ER promedio en TikTok ${data.formulaGanadora.perfilGanador.avgEngagementRateTiktok.toFixed(1)}%`}
-                  {data.formulaGanadora.perfilGanador.seguidoresTier && ` · ${data.formulaGanadora.perfilGanador.seguidoresTier}`}
+                  {data.topCreadores.creadores.length} creador{data.topCreadores.creadores.length > 1 ? 'es' : ''} con historial real en campañas terminadas · score de perfil 50% + rendimiento real 50%
                 </p>
               </div>
             </div>
-            {data.formulaGanadora.recomendados.length === 0 ? (
-              <EmptyState
-                icon={Trophy}
-                title="Sin candidatos por ahora"
-                desc="Ningún creador Pendiente superó el mínimo de similitud contra el perfil ganador actual."
-              />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {data.formulaGanadora.recomendados.map(c => (
-                  <FormulaCard
-                    key={c.creatorId} c={c}
-                    onClick={() => openDetalle(c.creatorId, {
-                      titulo: 'Por qué aparece en Fórmula ganadora',
-                      razon: c.razon,
-                      rows: c.breakdown,
-                    })}
-                  />
-                ))}
-              </div>
-            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {data.topCreadores.creadores.map(c => (
+                <TopCreadorCard
+                  key={c.creatorId} c={c}
+                  onClick={() => openDetalle(c.creatorId, {
+                    titulo: 'Por qué aparece en Top Creadores',
+                    razon: c.razon,
+                    rows: c.breakdown,
+                  })}
+                />
+              ))}
+            </div>
           </div>
         )
       ) : section === 'en-alza' ? (

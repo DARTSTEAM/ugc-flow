@@ -68,10 +68,10 @@ const STATUS_TO_ES = { active: 'Activa', draft: 'Borrador', completed: 'Cerrada'
 const STATUS_TO_EN = { Activa: 'active', Borrador: 'draft', Cerrada: 'completed', Pausada: 'paused' };
 
 // Estado de relación del creador (independiente del estado por-campaña en campaign_creators).
-const ESTADOS_CREATOR = ['Pendiente', 'Activo', 'En Negociación', 'Descartado', 'Inactivo'];
+const ESTADOS_CREATOR = ['Pendiente', 'En Negociación', 'Disponible', 'Activo', 'Descartado', 'Inactivo'];
 
 /**
- * Recalcula si alguno de los creadores `Activo`/`En Negociación` en una campaña que
+ * Recalcula si alguno de los creadores `Activo`/`Disponible` en una campaña que
  * acaba de cerrarse (status → 'completed') se queda sin ninguna otra asignación viva
  * en otra campaña — de ser así, pasa su `creators.estado` a 'Inactivo'. Nunca pisa
  * 'Descartado'. Sigue siendo editable a mano después desde UGCDrawer.
@@ -83,13 +83,13 @@ async function marcarInactivosPorCierre(campaignId) {
     WHERE c.estado != 'Descartado'
       AND EXISTS (
         SELECT 1 FROM ${DATASET}.campaign_creators cc
-        WHERE cc.creator_id = c.creator_id AND cc.campaign_id = @campaignId AND cc.estado = 'Activo'
+        WHERE cc.creator_id = c.creator_id AND cc.campaign_id = @campaignId AND cc.estado IN ('Activo', 'Disponible')
       )
       AND NOT EXISTS (
         SELECT 1 FROM ${DATASET}.campaign_creators cc2
         JOIN ${DATASET}.campaigns c2 ON cc2.campaign_id = c2.campaign_id
         WHERE cc2.creator_id = c.creator_id
-          AND cc2.estado IN ('Activo', 'En Negociación')
+          AND cc2.estado IN ('Activo', 'En Negociación', 'Disponible')
           AND c2.status != 'completed'
       )
   `, { campaignId });
@@ -851,8 +851,8 @@ app.delete('/api/campaigns/:id/creators/:creatorId', async (req, res) => {
 });
 
 // ─── PATCH /api/campaigns/:id/creators/:creatorId ───────────────────
-// Recalifica a un creador dentro de una campaña (Pendiente / Activo / En Negociación / Descartado).
-const ESTADOS_EN_CAMPANA = ['Pendiente', 'Activo', 'En Negociación', 'Descartado'];
+// Recalifica a un creador dentro de una campaña (Pendiente / En Negociación / Disponible / Activo / Descartado).
+const ESTADOS_EN_CAMPANA = ['Pendiente', 'En Negociación', 'Disponible', 'Activo', 'Descartado'];
 app.patch('/api/campaigns/:id/creators/:creatorId', async (req, res) => {
   try {
     const { id, creatorId } = req.params;
@@ -988,7 +988,7 @@ app.get('/api/campaigns/:id/content', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [contentRows, assigned, sentimentRows] = await Promise.all([
+    const [contentRows, assigned, sentimentRows, creatorSentimentRows] = await Promise.all([
       q(`
         SELECT cc.*, c.full_name AS creator_nombre, c.eval_perfil_categoria AS creator_categoria
         FROM ${DATASET}.campaign_content cc
@@ -1006,10 +1006,18 @@ app.get('/api/campaigns/:id/content', async (req, res) => {
         SELECT sentiment_positive, sentiment_neutral, sentiment_negative, sentiment_sample_size, sentiment_updated_at
         FROM ${DATASET}.campaigns WHERE campaign_id = @id
       `, { id }),
+      q(`
+        SELECT creator_id, positive, sample_size
+        FROM ${DATASET}.campaign_creator_sentiment WHERE campaign_id = @id
+      `, { id }),
     ]);
 
+    const sentimentByCreator = new Map(
+      creatorSentimentRows.map(r => [r.creator_id, { positive: r.positive, sampleSize: r.sample_size }])
+    );
+
     const content = contentRows.map(mapContentRow);
-    const metricas = computeCampaignMetrics(contentRows);
+    const metricas = computeCampaignMetrics(contentRows, sentimentByCreator);
     const sentimiento = mapSentimentRow(sentimentRows[0]);
 
     // Creadores asignados a la campaña que aún no tienen NINGÚN posteo cargado

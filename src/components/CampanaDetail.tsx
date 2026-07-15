@@ -5,7 +5,7 @@ import {
   ArrowLeft, Rocket, Pause, Play, Trash2, Megaphone,
   ChevronDown, ChevronUp, ChevronsUpDown,
   X, Loader2, RefreshCw,
-  Eye, Heart, MessageCircle, Share2, Link2, ExternalLink, AlertTriangle, Activity, HelpCircle, Sparkles, Smile, Users, Check
+  Eye, Heart, MessageCircle, Share2, Link2, ExternalLink, AlertTriangle, Activity, HelpCircle, Sparkles, Smile, Users, Check, Trophy
 } from 'lucide-react';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import instagramLogo from '../assets/instagram-logo.png';
@@ -42,8 +42,9 @@ interface Props {
 
 type SortKey2 = 'nombre' | 'estado' | 'score' | 'fechaEnvio';
 type SortDir = 'asc' | 'desc';
+type RankingSortKey = 'nombre' | 'views' | 'likes' | 'comments' | 'shares' | 'sentiment';
 
-const ESTADOS_EN: EstadoEnCampana[] = ['Pendiente', 'Activo', 'En Negociación', 'Descartado'];
+const ESTADOS_EN: EstadoEnCampana[] = ['Pendiente', 'En Negociación', 'Disponible', 'Activo', 'Descartado'];
 
 /** Tooltip por portal (mismo patrón que UGCDrawer.MetricRow). */
 function Tip({ text, children }: { text: string; children: React.ReactNode }) {
@@ -268,6 +269,8 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
   const [urlInputs, setUrlInputs] = useState<Record<string, string>>({});
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [posteosOpen, setPosteosOpen] = useState(false);
+  const [rankingOpen, setRankingOpen] = useState(false);
+  const [rankingSort, setRankingSort] = useState<{ key: RankingSortKey; dir: SortDir }>({ key: 'views', dir: 'desc' });
   const [creadoresOpen, setCreadoresOpen] = useState(false);
   const [modalEstado, setModalEstado] = useState<EstadoEnCampana | null>(null);
 
@@ -332,6 +335,7 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
     Pendiente: campana.ugcs.filter(u => u.estado === 'Pendiente').length,
     Activo: campana.ugcs.filter(u => u.estado === 'Activo').length,
     'En Negociación': campana.ugcs.filter(u => u.estado === 'En Negociación').length,
+    Disponible: campana.ugcs.filter(u => u.estado === 'Disponible').length,
     Descartado: campana.ugcs.filter(u => u.estado === 'Descartado').length,
   };
 
@@ -369,6 +373,22 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
         .filter((x): x is { uc: typeof x.uc; ugc: UGC } => !!x.ugc)
         .sort((a, b) => a.ugc.nombre.localeCompare(b.ugc.nombre))
     : [];
+
+  function handleRankingSort(k: RankingSortKey) {
+    setRankingSort(prev => prev.key === k ? { key: k, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'desc' });
+  }
+  function RankingSortIcon({ col }: { col: RankingSortKey }) {
+    if (rankingSort.key !== col) return <ChevronsUpDown className="w-3 h-3 opacity-30" />;
+    return rankingSort.dir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
+  }
+
+  const rankingRows = [...(metricas?.topCreadores ?? [])].sort((a, b) => {
+    let cmp = 0;
+    if (rankingSort.key === 'nombre') cmp = a.nombre.localeCompare(b.nombre);
+    else if (rankingSort.key === 'sentiment') cmp = (a.sentimentPositive ?? -1) - (b.sentimentPositive ?? -1);
+    else cmp = (a[rankingSort.key] ?? -1) - (b[rankingSort.key] ?? -1);
+    return rankingSort.dir === 'asc' ? cmp : -cmp;
+  });
 
   return (
     <div className="flex flex-col gap-5">
@@ -700,6 +720,145 @@ export default function CampanaDetail({ campana, ugcs, onBack, onTogglePause, on
                     })}
                   </div>
                 </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Ranking de Creadores (performance real por creador, ordenable) ──────── */}
+      <div className="border rounded-2xl p-4" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)', boxShadow: 'var(--shadow-card)' }}>
+        <button
+          type="button"
+          onClick={() => setRankingOpen(o => !o)}
+          className="w-full flex items-center justify-between gap-2"
+        >
+          <div className="flex items-center gap-2">
+            <Trophy className="w-4 h-4" style={{ color: 'var(--color-brand)' }} />
+            <h3 className="text-sm font-black" style={{ color: 'var(--color-text-1)' }}>Ranking de Creadores</h3>
+            {rankingRows.length > 0 && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md" style={{ backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-3)' }}>
+                {rankingRows.length} {rankingRows.length === 1 ? 'creador' : 'creadores'}
+              </span>
+            )}
+          </div>
+          <ChevronDown
+            className="w-4 h-4 transition-transform duration-200"
+            style={{ color: 'var(--color-text-3)', transform: rankingOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
+        </button>
+
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-out"
+          style={{ gridTemplateRows: rankingOpen ? '1fr' : '0fr' }}
+        >
+          <div className="overflow-hidden min-h-0">
+            <div className="pt-4">
+              {rankingRows.length === 0 ? (
+                <p className="py-10 text-center text-sm italic" style={{ color: 'var(--color-text-3)' }}>
+                  Todavía no hay posteos con métricas cargadas para rankear creadores
+                </p>
+              ) : (
+                <>
+                  <div className="hidden sm:block border rounded-xl overflow-hidden" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-separate border-spacing-0 min-w-[640px]">
+                        <thead style={{ backgroundColor: 'var(--color-surface)' }}>
+                          <tr>
+                            {[
+                              { key: 'nombre', label: 'Creador' },
+                              { key: 'views', label: 'Vistas' },
+                              { key: 'likes', label: 'Likes' },
+                              { key: 'comments', label: 'Comentarios' },
+                              { key: 'shares', label: 'Compartidos' },
+                            ].map(col => (
+                              <th key={col.key} onClick={() => handleRankingSort(col.key as RankingSortKey)}
+                                className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b cursor-pointer select-none whitespace-nowrap transition-colors duration-200"
+                                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'}
+                              >
+                                <div className="flex items-center gap-1">{col.label}<RankingSortIcon col={col.key as RankingSortKey} /></div>
+                              </th>
+                            ))}
+                            <th onClick={() => handleRankingSort('sentiment')}
+                              className="py-3 px-4 text-[10px] font-black uppercase tracking-[0.15em] border-b cursor-pointer select-none whitespace-nowrap transition-colors duration-200"
+                              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-3)' }}
+                              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-1)'}
+                              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--color-text-3)'}
+                            >
+                              <div className="flex items-center gap-1">
+                                % Sentimiento positivo<RankingSortIcon col="sentiment" />
+                                <Tip text="% de comentarios positivos entre los posteos de este creador en esta campaña. Se recalcula al correr 'Analizar ahora'.">
+                                  <HelpCircle className="w-3 h-3" />
+                                </Tip>
+                              </div>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rankingRows.map((r, i) => {
+                            const av = avatarColor(r.creatorId);
+                            return (
+                              <tr key={r.creatorId} className="transition-colors duration-150"
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.backgroundColor = ''}
+                              >
+                                <td className="py-3 px-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-4 text-xs font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>{i + 1}</span>
+                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${av}`}>
+                                      {getInitials(r.nombre)}
+                                    </div>
+                                    <span className="text-sm font-semibold" style={{ color: 'var(--color-text-1)' }}>{r.nombre}</span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-2)' }}>{fmt(r.views)}</td>
+                                <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-2)' }}>{fmt(r.likes)}</td>
+                                <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-2)' }}>{fmt(r.comments)}</td>
+                                <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-2)' }}>{fmt(r.shares)}</td>
+                                <td className="py-3 px-4 border-b text-xs font-mono" style={{ borderColor: 'var(--color-border-subtle)', color: 'var(--color-text-2)' }}>
+                                  {r.sentimentSampleSize > 0 ? (
+                                    `${r.sentimentPositive}%`
+                                  ) : (
+                                    <Tip text="Todavía no se calculó el sentimiento por creador para este posteo — correr 'Analizar ahora'.">
+                                      <span style={{ color: 'var(--color-border)' }}>—</span>
+                                    </Tip>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Lista en cards (mobile, < 640px) */}
+                  <div className="sm:hidden flex flex-col gap-2.5">
+                    {rankingRows.map((r, i) => {
+                      const av = avatarColor(r.creatorId);
+                      return (
+                        <div key={r.creatorId} className="border rounded-xl p-3 flex flex-col gap-2" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface)' }}>
+                          <div className="flex items-center gap-2">
+                            <span className="w-4 text-xs font-mono flex-shrink-0" style={{ color: 'var(--color-text-3)' }}>{i + 1}</span>
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${av}`}>
+                              {getInitials(r.nombre)}
+                            </div>
+                            <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-1)' }}>{r.nombre}</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-xs font-mono" style={{ color: 'var(--color-text-2)' }}>
+                            <span>{fmt(r.views)} vistas</span>
+                            <span>{fmt(r.likes)} likes</span>
+                            <span>{fmt(r.comments)} coment.</span>
+                            <span>{fmt(r.shares)} compart.</span>
+                            <span>{r.sentimentSampleSize > 0 ? `${r.sentimentPositive}% positivo` : '— sentimiento'}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
           </div>

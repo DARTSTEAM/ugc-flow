@@ -4,6 +4,7 @@ import { scrapeTikTokProfile } from './scrapers/tiktok-profile.js';
 import { scrapeContentPost, detectPlatform } from './scrapers/content-post.js';
 import { buildGoogleDork, searchProfiles } from './scrapers/google-search.js';
 import { closeAllBrowsers, closeBrowser } from './browser-pool.js';
+import { evaluateProspecto } from './prospect-ai.js';
 import { recalcularScore } from '../score-service.js';
 import { analyzeSentiment } from '../sentiment-service.js';
 
@@ -297,9 +298,9 @@ export async function refreshWatchlistSnapshots(creatorIds, runId) {
  * y las escribe en `campaign_content`. La atribución ya está resuelta (cada fila
  * tiene la URL exacta del posteo), así que esto sólo lee stats por permalink.
  *
- * De paso, junta los últimos 10 comentarios de CADA posteo en una única lista
- * global (sin distinguir creador/posteo de origen) y la manda a analyzeSentiment()
- * para recalcular el sentimiento de la campaña.
+ * De paso, junta los últimos 10 comentarios de CADA posteo, tagueados con el
+ * creator_id del posteo de origen, y los manda a analyzeSentiment() para
+ * recalcular el sentimiento de la campaña (agregado global) y por creador.
  *
  * @param {string} campaignId
  * @returns {{ success: string[], failed: Array<{id, reason}>, durationMs: number, sentiment: object|null }}
@@ -308,7 +309,7 @@ export async function scrapeCampaignContent(campaignId) {
   const start = Date.now();
 
   const [rows] = await bq.query({
-    query: `SELECT content_id, content_url, platform FROM ${DATASET}.campaign_content WHERE campaign_id = @campaignId`,
+    query: `SELECT content_id, content_url, platform, creator_id FROM ${DATASET}.campaign_content WHERE campaign_id = @campaignId`,
     params: { campaignId },
     location: 'US',
   });
@@ -317,7 +318,7 @@ export async function scrapeCampaignContent(campaignId) {
 
   const success = [];
   const failed = [];
-  const allCommentTexts = [];
+  const commentItems = [];
 
   try {
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
@@ -337,7 +338,11 @@ export async function scrapeCampaignContent(campaignId) {
         const piece = batch[j];
         if (result.status === 'fulfilled' && result.value?.ok) {
           success.push(piece.content_id);
-          if (result.value.commentTexts?.length) allCommentTexts.push(...result.value.commentTexts);
+          if (result.value.commentTexts?.length) {
+            for (const text of result.value.commentTexts) {
+              commentItems.push({ creatorId: piece.creator_id, text });
+            }
+          }
         } else {
           const reason = result.status === 'rejected'
             ? result.reason?.message
@@ -353,7 +358,7 @@ export async function scrapeCampaignContent(campaignId) {
 
   let sentiment = null;
   try {
-    sentiment = await analyzeSentiment(campaignId, allCommentTexts);
+    sentiment = await analyzeSentiment(campaignId, commentItems);
   } catch (err) {
     console.error('[Kernel/Content] Sentiment analysis failed:', err.message);
   }
@@ -372,6 +377,7 @@ const PLATFORM_ADAPTERS = {
       nombre: data.nombre,
       seguidores: data.seguidores ?? 0,
       bio: data.bio ?? null,
+      externalUrl: data.externalUrl ?? null,
       engagementRate: data.engagementRateCuenta,
       promedioVistas: data.promedioVistaVideos,
       categoria: data.categoria,
@@ -388,6 +394,7 @@ const PLATFORM_ADAPTERS = {
       nombre: data.nombre,
       seguidores: data.seguidores ?? 0,
       bio: data.bio ?? null,
+      externalUrl: data.bioLink ?? null,
       engagementRate: data.engagementRate,
       promedioVistas: data.promedioVistas,
       categoria: null,
@@ -405,12 +412,20 @@ const PLATFORM_ADAPTERS = {
  * estos creadores todavía no existen en la base) y se queda con los que caen
  * dentro del rango de seguidores pedido.
  *
+ * Cada aprobado pasa además por evaluateProspecto() (prospect-ai.js), que
+ * juzga afinidad de nicho a partir de bio/categoría y busca un email de
+ * contacto (bio o, si no está ahí, siguiendo un salto al link externo de la
+ * bio) reutilizando la misma sesión de Kernel — nunca lanza, así que un fallo
+ * ahí sólo deja esos campos en null sin frenar la prospección.
+ *
  * Se detiene apenas junta `targetQuantity` aprobados o se queda sin candidatos.
  * Nunca lanza: si Google bloquea la búsqueda (captcha) o la plataforma bloquea
  * un perfil puntual, sigue con el resto y devuelve lo que haya logrado juntar.
  *
  * @param {{ niche: string, location?: string, minFollowers?: number, maxFollowers?: number, targetQuantity?: number, platform?: 'instagram'|'tiktok' }} params
  * @returns {{ query: string, platform: string, googleBlocked: boolean, totalCandidates: number, approved: object[], discarded: object[], errors: Array<{username?:string, stage?:string, reason:string}> }}
+ *   Cada `approved[i]` incluye, además de los campos de perfil, `email` (string|null) y
+ *   `nicheFit`/`nicheFitReason` (boolean|null, string|null) de la evaluación IA.
  */
 export async function prospectCreators({ niche, location, minFollowers, maxFollowers, targetQuantity, platform }) {
   if (!niche) throw new Error('niche es requerido');
@@ -457,8 +472,19 @@ export async function prospectCreators({ niche, location, minFollowers, maxFollo
         const enRango = (min == null || seguidores >= min) && (max == null || seguidores <= max);
 
         if (enRango) {
-          approved.push(prospecto);
-          console.log(`[Prospecting] ✓ @${username} aprobado (${seguidores} seguidores) — ${approved.length}/${target}`);
+          const { email, nicheFit, nicheFitReason } = await evaluateProspecto({
+            platform: platformKey,
+            niche,
+            bio: prospecto.bio,
+            categoria: prospecto.categoria,
+            externalUrl: prospecto.externalUrl,
+          }).catch(err => {
+            console.warn(`[Prospecting] @${username} — evaluación IA falló: ${err.message}`);
+            return { email: null, nicheFit: null, nicheFitReason: null };
+          });
+
+          approved.push({ ...prospecto, email, nicheFit, nicheFitReason });
+          console.log(`[Prospecting] ✓ @${username} aprobado (${seguidores} seguidores, nicheFit=${nicheFit}) — ${approved.length}/${target}`);
         } else {
           discarded.push({ ...prospecto, motivo: 'fuera_de_rango_seguidores' });
           console.log(`[Prospecting] ✗ @${username} fuera de rango (${seguidores} seguidores)`);

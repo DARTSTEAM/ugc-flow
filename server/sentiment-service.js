@@ -1,7 +1,11 @@
 /**
- * Sentiment service — clasifica con MiniMax la lista global (unificada, sin
- * distinguir creador/posteo) de los últimos comentarios por posteo de una
- * campaña, y persiste el agregado en `campaigns`.
+ * Sentiment service — clasifica con MiniMax los últimos comentarios de cada
+ * posteo de una campaña y persiste dos agregados: uno GLOBAL de campaña
+ * (`campaigns.sentiment_*`, mezclando todos los creadores/posteos, para el
+ * resumen de campaña) y uno POR CREADOR (`campaign_creator_sentiment`, para
+ * el Ranking de Creadores). La clasificación en sí es una sola pasada por
+ * MiniMax sobre todos los comentarios — el mismo volumen de llamados que
+ * antes, sólo se reagrupan los resultados dos veces al terminar.
  *
  * Llamado por scrapeCampaignContent() al final de POST /api/campaigns/:id/scrape-content.
  *
@@ -120,40 +124,52 @@ async function classifyWithRetry(comments, attempt = 0) {
 
 /**
  * @param {string} campaignId
- * @param {string[]} rawComments  lista global unificada (últimos N por posteo, todos mezclados)
- * @returns {{ positive: number, neutral: number, negative: number, sampleSize: number }}
+ * @param {{creatorId: string, text: string}[]} rawItems  últimos N comentarios por posteo, tagueados con el creador de origen
+ * @returns {{ positive: number, neutral: number, negative: number, sampleSize: number }}  agregado GLOBAL de campaña
  */
-export async function analyzeSentiment(campaignId, rawComments) {
-  const comments = (rawComments ?? [])
-    .map(c => (c ?? '').toString().trim())
-    .filter(Boolean);
+export async function analyzeSentiment(campaignId, rawItems) {
+  const items = (rawItems ?? [])
+    .map(it => ({ creatorId: it?.creatorId ?? null, text: (it?.text ?? '').toString().trim() }))
+    .filter(it => it.text && it.creatorId);
 
-  if (!comments.length) {
+  if (!items.length) {
     const empty = { positive: 0, neutral: 100, negative: 0, sampleSize: 0 };
     await persistSentiment(campaignId, empty);
+    await persistSentimentByCreator(campaignId, []);
     return empty;
   }
 
   // Filtro de stickers: se clasifican como neutral sin gastar tokens en MiniMax.
-  const classified = [];
+  const classifiedItems = [];
   const toClassify = [];
-  for (const text of comments) {
-    if (STICKER_RE.test(text)) {
-      classified.push({ sentiment: 'neutral', requires_response: false });
+  for (const it of items) {
+    if (STICKER_RE.test(it.text)) {
+      classifiedItems.push({ creatorId: it.creatorId, sentiment: 'neutral', requires_response: false });
     } else {
-      toClassify.push(text);
+      toClassify.push(it);
     }
   }
 
-  // Chunks de 60, secuenciales (no en paralelo).
+  // Chunks de 60, secuenciales (no en paralelo). classifyWithRetry preserva el
+  // orden del chunk de entrada (incluso al partirlo al medio en un reintento),
+  // así que cada resultado se puede volver a asociar con su creatorId por índice.
   for (let i = 0; i < toClassify.length; i += CHUNK_SIZE) {
     const chunk = toClassify.slice(i, i + CHUNK_SIZE);
-    const results = await classifyWithRetry(chunk);
-    classified.push(...results);
+    const results = await classifyWithRetry(chunk.map(it => it.text));
+    results.forEach((r, idx) => classifiedItems.push({ creatorId: chunk[idx].creatorId, ...r }));
   }
 
-  const result = aggregate(classified);
+  const result = aggregate(classifiedItems);
   await persistSentiment(campaignId, result);
+
+  const byCreator = new Map();
+  for (const c of classifiedItems) {
+    if (!byCreator.has(c.creatorId)) byCreator.set(c.creatorId, []);
+    byCreator.get(c.creatorId).push(c);
+  }
+  const perCreator = [...byCreator.entries()].map(([creatorId, list]) => ({ creatorId, ...aggregate(list) }));
+  await persistSentimentByCreator(campaignId, perCreator);
+
   return result;
 }
 
@@ -195,4 +211,33 @@ async function persistSentiment(campaignId, r) {
     types: { positive: 'INT64', neutral: 'INT64', negative: 'INT64', sampleSize: 'INT64' },
     location: 'US',
   });
+}
+
+/** Reemplaza por completo el sentimiento por creador de una campaña (DELETE + INSERT, mismo patrón idempotente que creator_scores). */
+async function persistSentimentByCreator(campaignId, perCreator) {
+  await bq.query({
+    query: `DELETE FROM ${DATASET}.campaign_creator_sentiment WHERE campaign_id = @campaignId`,
+    params: { campaignId },
+    location: 'US',
+  });
+
+  for (const r of perCreator) {
+    await bq.query({
+      query: `
+        INSERT INTO ${DATASET}.campaign_creator_sentiment
+          (campaign_id, creator_id, positive, neutral, negative, sample_size, updated_at)
+        VALUES (@campaignId, @creatorId, @positive, @neutral, @negative, @sampleSize, CURRENT_TIMESTAMP())
+      `,
+      params: {
+        campaignId,
+        creatorId: r.creatorId,
+        positive: r.positive,
+        neutral: r.neutral,
+        negative: r.negative,
+        sampleSize: r.sampleSize,
+      },
+      types: { positive: 'INT64', neutral: 'INT64', negative: 'INT64', sampleSize: 'INT64' },
+      location: 'US',
+    });
+  }
 }

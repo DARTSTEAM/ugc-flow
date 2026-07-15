@@ -1158,7 +1158,9 @@ function genAgentId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-// Llama al webhook de n8n y extrae el texto de la respuesta del agente.
+// Llama al webhook de n8n y devuelve la respuesta del agente como una lista de
+// mensajes { text, delayMs } — n8n ya los separa por salto de línea y asigna
+// un delay natural (0.5-2s) a cada uno, salvo el primero.
 // n8n responde de forma síncrona; esperamos hasta 55 s antes de abortar.
 async function callN8N(sessionId, message, userName, newChat) {
   if (!N8N_WEBHOOK_URL || !N8N_AUTH_VALUE) {
@@ -1186,9 +1188,19 @@ async function callN8N(sessionId, message, userName, newChat) {
     const data = await res.json();
 
     // n8n puede devolver varios formatos según el nodo de respuesta configurado
-    if (typeof data === 'string') return data;
-    const item = Array.isArray(data) ? data[0] : data;
-    return (
+    const item = typeof data === 'string' ? { output: data } : (Array.isArray(data) ? data[0] : data);
+
+    if (Array.isArray(item?.replies) && item.replies.length > 0) {
+      const replies = item.replies
+        .map((r, i) => ({
+          text: (typeof r === 'string' ? r : String(r?.text ?? '')).trim(),
+          delayMs: typeof r?.delayMs === 'number' ? r.delayMs : (i === 0 ? 0 : 800),
+        }))
+        .filter(r => r.text.length > 0);
+      if (replies.length > 0) return replies;
+    }
+
+    const text = (
       item?.output   ??
       item?.text     ??
       item?.reply    ??
@@ -1196,6 +1208,7 @@ async function callN8N(sessionId, message, userName, newChat) {
       item?.response ??
       JSON.stringify(item)
     );
+    return [{ text, delayMs: 0 }];
   } finally {
     clearTimeout(timer);
   }
@@ -1239,9 +1252,10 @@ app.post('/api/agent/conversations/:id/messages', async (req, res) => {
     const isNewChat = !conversationsStarted.has(id);
     conversationsStarted.add(id);
 
-    const reply = await callN8N(id, content.trim(), userName, isNewChat);
+    const replies = await callN8N(id, content.trim(), userName, isNewChat);
+    const reply = replies.map(r => r.text).join('\n');
 
-    // Auditoría en BQ
+    // Auditoría en BQ (se guarda el texto completo, unido por salto de línea)
     const msgIdUser = genAgentId('msg');
     await q(
       `INSERT INTO ${DATASET}.agent_messages (message_id, conversation_id, role, content, created_at) VALUES (@msgIdUser, @id, 'user', @content, CURRENT_TIMESTAMP())`,
@@ -1253,7 +1267,7 @@ app.post('/api/agent/conversations/:id/messages', async (req, res) => {
       { msgIdAI, id, reply }
     );
 
-    res.json({ reply });
+    res.json({ replies });
   } catch (err) {
     console.error('POST /api/agent/conversations/:id/messages error:', err);
     res.status(500).json({ error: err.message });

@@ -166,7 +166,17 @@ export default function TestAgentTab() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+
+      // El agente puede responder con varios mensajes (separados por salto de línea
+      // en n8n); se muestran uno por uno con una demora natural entre 0.5s y 2s.
+      const replies: { text: string; delayMs: number }[] = Array.isArray(data.replies)
+        ? data.replies
+        : [{ text: data.reply, delayMs: 0 }];
+
+      for (const r of replies) {
+        if (r.delayMs > 0) await new Promise(resolve => setTimeout(resolve, r.delayMs));
+        setMessages(prev => [...prev, { role: 'assistant', content: r.text }]);
+      }
     } catch (err) {
       console.error('Error sending message:', err);
       setMessages(prev => [

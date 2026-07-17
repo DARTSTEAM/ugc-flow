@@ -3,6 +3,7 @@ import { User, Camera, Loader2, Check } from 'lucide-react';
 import type { UserProfile } from '../data';
 import { fetchProfile, updateProfile } from '../api';
 import { getInitials } from '../utils';
+import { useCompany } from '../context/CompanyContext';
 
 interface Props {
   onSaved: (profile: UserProfile) => void;
@@ -26,6 +27,7 @@ function blurInput(e: React.FocusEvent<HTMLInputElement>) {
 }
 
 export default function ProfileView({ onSaved }: Props) {
+  const { brands } = useCompany();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -35,6 +37,7 @@ export default function ProfileView({ onSaved }: Props) {
   const [area, setArea] = useState('');
   const [email, setEmail] = useState('');
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [marcaAsignada, setMarcaAsignada] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const savedTimer = useRef<number | null>(null);
@@ -48,6 +51,7 @@ export default function ProfileView({ onSaved }: Props) {
         setArea(p.area || '');
         setEmail(p.email || '');
         setFotoUrl(p.fotoUrl);
+        setMarcaAsignada(p.marcaAsignada);
       })
       .catch(err => !cancelled && setError(err instanceof Error ? err.message : 'Error al cargar el perfil'))
       .finally(() => !cancelled && setLoading(false));
@@ -73,8 +77,8 @@ export default function ProfileView({ onSaved }: Props) {
     setError('');
     setSaving(true);
     try {
-      await updateProfile({ nombre: nombre.trim(), area: area.trim(), email: email.trim() || null, fotoUrl });
-      onSaved({ id: 'user-001', nombre: nombre.trim(), area: area.trim(), email: email.trim() || null, fotoUrl });
+      await updateProfile({ nombre: nombre.trim(), area: area.trim(), email: email.trim() || null, fotoUrl, marcaAsignada });
+      onSaved({ id: 'user-001', nombre: nombre.trim(), area: area.trim(), email: email.trim() || null, fotoUrl, marcaAsignada });
       setSaved(true);
       if (savedTimer.current) window.clearTimeout(savedTimer.current);
       savedTimer.current = window.setTimeout(() => setSaved(false), 2500);
@@ -166,6 +170,24 @@ export default function ProfileView({ onSaved }: Props) {
             onFocus={focusInput}
             onBlur={blurInput}
           />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: 'var(--color-text-3)' }}>Marca asignada</label>
+          <select
+            value={marcaAsignada || ''}
+            onChange={e => setMarcaAsignada(e.target.value || null)}
+            className="px-3 py-2.5 border rounded-xl text-sm focus:outline-none transition-all duration-200"
+            style={inputBase}
+            onFocus={e => { e.currentTarget.style.borderColor = 'var(--color-brand)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(252,154,0,0.12)'; }}
+            onBlur={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.boxShadow = ''; }}
+          >
+            <option value="">Grupo NGR (sin marca fija)</option>
+            {brands.map(b => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+          </select>
+          <p className="text-[10.5px]" style={{ color: 'var(--color-text-3)' }}>
+            Es la empresa que se te va a preseleccionar en el selector del nav la próxima vez que entres sin haber elegido una a mano.
+          </p>
         </div>
 
         {error && (

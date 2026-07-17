@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Routes, Route, Navigate, NavLink, useNavigate, useLocation, useMatch, useParams } from 'react-router-dom';
-import { Users, Megaphone, ChevronRight, MessageSquare, ScanSearch, Star, BrainCircuit, Menu, X } from 'lucide-react';
+import { Users, Megaphone, ChevronRight, MessageSquare, ScanSearch, Star, BrainCircuit, Menu, X, Globe2 } from 'lucide-react';
 import { fetchCreators, fetchCreatorDetail, updateCreator, deleteCreator, fetchCampaigns, updateCampaignStatus, createCampaign, assignCreatorToCampaign, deleteCampaign, updateCreatorCampaignStatus, fetchProfile } from './api';
 import type { UGC, Campana, EstadoEnCampana, UserProfile } from './data';
+import { useCompany } from './context/CompanyContext';
 import UGCsTab from './components/UGCsTab';
 import ChatsTab from './components/ChatsTab';
 import CampanasTab from './components/CampanasTab';
@@ -11,16 +12,24 @@ import NuevaCampanaModal from './components/NuevaCampanaModal';
 import ProspeccionTab from './components/ProspeccionTab';
 import RecomendacionesTab from './components/RecomendacionesTab';
 import TestAgentTab from './components/TestAgentTab';
+import GrupoNgrTab from './components/GrupoNgrTab';
+import CompanySelector from './components/CompanySelector';
 import UserProfileMenu from './components/UserProfileMenu';
 import ProfileView from './components/ProfileView';
 import ChatsDisclaimerModal from './components/ChatsDisclaimerModal';
 import logoNgr from './assets/Logo-ngr.png';
 
-export const FALLBACK_PROFILE: UserProfile = { id: 'user-001', nombre: 'Bautista', area: 'Marketing', email: null, fotoUrl: null };
+export const FALLBACK_PROFILE: UserProfile = { id: 'user-001', nombre: 'Bautista', area: 'Marketing', email: null, fotoUrl: null, marcaAsignada: null };
 
-type TabId = 'ugcs' | 'campanas' | 'chats' | 'prospeccion' | 'recomendaciones' | 'testagent';
+type TabId = 'grupo-ngr' | 'ugcs' | 'campanas' | 'chats' | 'prospeccion' | 'recomendaciones' | 'testagent';
 
-const NAV_ITEMS = [
+// Grupo NGR es la única vista que no depende del selector de empresa — el resto
+// se filtra por la marca elegida, por eso van en dos grupos separados en el nav.
+const GENERAL_NAV_ITEMS = [
+  { id: 'grupo-ngr' as TabId,        path: '/grupo-ngr',     label: 'Resumen',         icon: Globe2 },
+];
+
+const COMPANY_NAV_ITEMS = [
   { id: 'ugcs' as TabId,             path: '/ugcs',          label: 'UGCs Activos',    icon: Users },
   { id: 'campanas' as TabId,         path: '/campanas',      label: 'Campañas',        icon: Megaphone },
   { id: 'chats' as TabId,            path: '/chats',         label: 'Chats',           icon: MessageSquare },
@@ -28,6 +37,8 @@ const NAV_ITEMS = [
   { id: 'recomendaciones' as TabId,  path: '/recomendaciones', label: 'Recomendaciones', icon: Star },
   { id: 'testagent' as TabId,        path: '/testagent',     label: 'Test Agent',      icon: BrainCircuit },
 ];
+
+const NAV_ITEMS = [...GENERAL_NAV_ITEMS, ...COMPANY_NAV_ITEMS];
 
 /** Envuelve CampanaDetail: resuelve la campaña por :id y traduce back/delete a navegación real. */
 function CampanaDetailRoute({ campanas, ugcs, onTogglePause, onLanzar, onDeleteCampana, onUpdateEstadoCreador, onGoToChat }: {
@@ -90,6 +101,7 @@ export default function App() {
   const [dark, setDark] = useDarkMode();
   const [profile, setProfile] = useState<UserProfile>(FALLBACK_PROFILE);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const { selectedBrandId, setSelectedBrandId, isFirstVisit } = useCompany();
 
   const isPerfil = location.pathname === '/perfil';
   const section = location.pathname.split('/')[1] || 'ugcs';
@@ -114,8 +126,27 @@ export default function App() {
   }
 
   useEffect(() => {
-    fetchProfile().then(setProfile).catch(() => {});
+    fetchProfile().then(p => {
+      setProfile(p);
+      // Primera visita (sin elección manual todavía): la marca asignada del usuario
+      // pisa el fallback 'popeyes' del CompanyContext. 'grupo_ngr'/null se ignora
+      // a propósito — para ese caso el fallback a Popeyes ya es lo pedido.
+      if (isFirstVisit && p.marcaAsignada && p.marcaAsignada !== 'grupo_ngr') {
+        setSelectedBrandId(p.marcaAsignada);
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Filtrado por empresa: las vistas existentes solo ven la marca elegida en el nav ──
+  const visibleUgcs = useMemo(
+    () => ugcs.filter(u => u.brandIds?.includes(selectedBrandId)),
+    [ugcs, selectedBrandId]
+  );
+  const visibleCampanas = useMemo(
+    () => campanas.filter(c => c.marcaId === selectedBrandId),
+    [campanas, selectedBrandId]
+  );
 
   // ── Load data from API on mount ──────────────────────────────────
   useEffect(() => {
@@ -248,6 +279,30 @@ export default function App() {
     } catch (err) {
       console.error('Failed to create campaign:', err);
     }
+  }
+
+  function renderNavItem(item: (typeof NAV_ITEMS)[number]) {
+    const Icon = item.icon;
+    const isActive = !isPerfil && (location.pathname === item.path || location.pathname.startsWith(item.path + '/'));
+    return (
+      <NavLink
+        key={item.id}
+        to={item.path}
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-0.5 text-sm font-semibold transition-all duration-200 active:scale-[0.98]"
+        style={isActive ? {
+          backgroundColor: 'var(--color-brand)',
+          color: '#fff',
+          boxShadow: 'var(--shadow-btn-brand)',
+        } : {
+          color: 'var(--color-text-2)',
+        }}
+        onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; }}
+        onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
+      >
+        <Icon className="w-4 h-4 flex-shrink-0" />
+        {item.label}
+      </NavLink>
+    );
   }
 
   // ── Loading state ────────────────────────────────────────────────
@@ -399,45 +454,19 @@ export default function App() {
 
         {/* Nav */}
         <nav className="flex-1 py-4 px-3 overflow-y-auto">
-          {NAV_ITEMS.map(item => {
-            const Icon = item.icon;
-            const isActive = !isPerfil && (location.pathname === item.path || location.pathname.startsWith(item.path + '/'));
-            return (
-              <NavLink
-                key={item.id}
-                to={item.path}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-0.5 text-sm font-semibold transition-all duration-200 active:scale-[0.98]"
-                style={isActive ? {
-                  backgroundColor: 'var(--color-brand)',
-                  color: '#fff',
-                  boxShadow: 'var(--shadow-btn-brand)',
-                } : {
-                  color: 'var(--color-text-2)',
-                }}
-                onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-alt)'; }}
-                onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {item.label}
-                <span
-                  className="ml-auto text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md"
-                  style={isActive
-                    ? { backgroundColor: 'rgba(255,255,255,0.25)', color: '#fff' }
-                    : item.id === 'chats' && ugcs.some(u => u.unread)
-                      ? { backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand-hover)' }
-                      : { backgroundColor: 'var(--color-surface-alt)', color: 'var(--color-text-2)' }
-                  }
-                >
-                  {item.id === 'ugcs' && ugcs.length}
-                  {item.id === 'prospeccion' && 4}
-                  {item.id === 'campanas' && campanas.length}
-                  {item.id === 'chats' && ugcs.filter(u => u.unread).length}
-                  {item.id === 'recomendaciones' && ugcs.filter(u => u.score > 0 && u.estado !== 'Descartado').length}
-                  {item.id === 'testagent' && 'AI'}
-                </span>
-              </NavLink>
-            );
-          })}
+          <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-1.5 px-2" style={{ color: 'var(--color-text-3)' }}>
+            Vista Grupo NGR
+          </p>
+          {GENERAL_NAV_ITEMS.map(item => renderNavItem(item))}
+
+          <div className="my-3 px-1">
+            <p className="text-[10px] font-black uppercase tracking-[0.15em] mb-1.5 px-2" style={{ color: 'var(--color-text-3)' }}>
+              Vistas por empresa
+            </p>
+            <CompanySelector />
+          </div>
+
+          {COMPANY_NAV_ITEMS.map(item => renderNavItem(item))}
         </nav>
 
         {/* User at bottom */}
@@ -500,6 +529,7 @@ export default function App() {
             ) : (
               <div>
                 <h1 className="text-base font-black" style={{ color: 'var(--color-text-1)' }}>
+                  {section === 'grupo-ngr' && 'Grupo NGR'}
                   {section === 'ugcs' && 'UGCs Activos'}
                   {section === 'prospeccion' && 'Prospección de UGCs'}
                   {section === 'campanas' && 'Gestión de Campañas'}
@@ -507,6 +537,7 @@ export default function App() {
                   {section === 'recomendaciones' && 'Recomendaciones'}
                 </h1>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-3)' }}>
+                  {section === 'grupo-ngr' && 'Comparativa de las 6 marcas del grupo, sin filtrar por empresa'}
                   {section === 'ugcs' && 'Gestioná, calificá y asigná creadores a tus campañas'}
                   {section === 'prospeccion' && 'Buscá y calificá nuevos creadores UGC para tus campañas'}
                   {section === 'campanas' && 'Creá, pausá y monitoreá el progreso de tus campañas activas'}
@@ -537,10 +568,11 @@ export default function App() {
         >
           <Routes>
             <Route path="/" element={<Navigate to="/ugcs" replace />} />
+            <Route path="/grupo-ngr" element={<GrupoNgrTab />} />
             <Route path="/ugcs" element={
               <UGCsTab
-                ugcs={ugcs}
-                campanas={campanas}
+                ugcs={visibleUgcs}
+                campanas={visibleCampanas}
                 onAddUGC={handleAddUGC}
                 onUpdateUGC={handleUpdateUGC}
                 onDeleteUGC={handleDeleteUGC}
@@ -550,8 +582,8 @@ export default function App() {
             } />
             <Route path="/ugcs/:id" element={
               <UGCsTab
-                ugcs={ugcs}
-                campanas={campanas}
+                ugcs={visibleUgcs}
+                campanas={visibleCampanas}
                 onAddUGC={handleAddUGC}
                 onUpdateUGC={handleUpdateUGC}
                 onDeleteUGC={handleDeleteUGC}
@@ -562,8 +594,8 @@ export default function App() {
             <Route path="/prospeccion" element={<ProspeccionTab />} />
             <Route path="/campanas" element={
               <CampanasTab
-                campanas={campanas}
-                ugcs={ugcs}
+                campanas={visibleCampanas}
+                ugcs={visibleUgcs}
                 onSelectCampana={c => navigate(`/campanas/${c.id}`)}
                 onTogglePause={handleTogglePause}
                 onLanzar={handleLanzar}
@@ -581,12 +613,13 @@ export default function App() {
                 onGoToChat={goToChat}
               />
             } />
-            <Route path="/chats" element={<ChatsTab ugcs={ugcs} onUpdateUGC={handleUpdateUGC} />} />
+            <Route path="/chats" element={<ChatsTab ugcs={visibleUgcs} onUpdateUGC={handleUpdateUGC} />} />
+            {/* Sin filtrar: un link directo a un chat (p.ej. desde el detalle de una campaña de otra marca) tiene que abrir igual */}
             <Route path="/chats/:ugcId" element={<ChatsTab ugcs={ugcs} onUpdateUGC={handleUpdateUGC} />} />
             <Route path="/recomendaciones" element={
               <RecomendacionesTab
-                ugcs={ugcs}
-                campanas={campanas}
+                ugcs={visibleUgcs}
+                campanas={visibleCampanas}
                 onUpdateUGC={handleUpdateUGC}
                 onGoToChat={goToChat}
                 onAsignar={handleAsignarCampana}

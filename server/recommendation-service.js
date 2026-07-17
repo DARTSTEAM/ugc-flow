@@ -39,14 +39,15 @@ function platformLabel(p) {
  * una campaña terminada, el creador no entra: esta sección mide performance
  * comprobada, no sólo participación.
  */
-async function getTopCreadores() {
+async function getTopCreadores(brandId) {
   const [poolRows, contentRows, creators, brands] = await Promise.all([
     q(`
       SELECT DISTINCT cc.creator_id, cc.campaign_id, cc.brand_id
       FROM ${DATASET}.campaign_creators cc
       JOIN ${DATASET}.campaigns camp ON cc.campaign_id = camp.campaign_id
       WHERE cc.estado = 'Activo' AND camp.status = 'completed'
-    `),
+        ${brandId ? 'AND cc.brand_id = @brandId' : ''}
+    `, brandId ? { brandId } : undefined),
     q(`
       SELECT cont.creator_id, cont.campaign_id, cont.platform, cont.org_engagement_rate,
              cont.org_likes, cont.org_comments, cont.org_shares, cont.org_saves
@@ -154,11 +155,18 @@ async function getTopCreadores() {
 }
 
 /** Sección "Ex-colaboradores mejorado": estado='Inactivo', rankeado por performance real. */
-async function getExColaboradoresMejorado() {
-  const inactivos = await q(`
-    SELECT creator_id, full_name, username, seguidores_display, score
-    FROM ${DATASET}.creators WHERE estado = 'Inactivo'
-  `);
+async function getExColaboradoresMejorado(brandId) {
+  const [inactivosAll, brandCreatorIds] = await Promise.all([
+    q(`
+      SELECT creator_id, full_name, username, seguidores_display, score
+      FROM ${DATASET}.creators WHERE estado = 'Inactivo'
+    `),
+    brandId
+      ? q(`SELECT DISTINCT creator_id FROM ${DATASET}.campaign_creators WHERE brand_id = @brandId`, { brandId })
+      : Promise.resolve(null),
+  ]);
+  const allowedIds = brandCreatorIds ? new Set(brandCreatorIds.map(r => r.creator_id)) : null;
+  const inactivos = allowedIds ? inactivosAll.filter(c => allowedIds.has(c.creator_id)) : inactivosAll;
   if (!inactivos.length) return [];
 
   const [contentRows, ccRows, brands] = await Promise.all([
@@ -239,25 +247,38 @@ const MAX_EN_ALZA = 12;
  * creador con menos de 2 snapshots simplemente no aparece en el join — ese es
  * el gate natural de "necesita ≥2 corridas", sin flag extra.
  */
-async function getEnAlza() {
-  const rows = await q(`
-    WITH ranked AS (
-      SELECT *, ROW_NUMBER() OVER (PARTITION BY creator_id ORDER BY captured_at DESC) AS rn
-      FROM ${DATASET}.creator_metric_snapshots
-    )
-    SELECT
-      latest.creator_id,
-      latest.captured_at AS latest_captured_at, prev.captured_at AS prev_captured_at,
-      latest.ig_seguidores AS l_ig_seg, prev.ig_seguidores AS p_ig_seg,
-      latest.ig_engagement_rate AS l_ig_er, prev.ig_engagement_rate AS p_ig_er,
-      latest.ig_videos_virales AS l_ig_vir, prev.ig_videos_virales AS p_ig_vir,
-      latest.tt_seguidores AS l_tt_seg, prev.tt_seguidores AS p_tt_seg,
-      latest.tt_engagement_rate AS l_tt_er, prev.tt_engagement_rate AS p_tt_er,
-      latest.tt_videos_virales AS l_tt_vir, prev.tt_videos_virales AS p_tt_vir
-    FROM ranked latest
-    JOIN ranked prev ON latest.creator_id = prev.creator_id AND prev.rn = 2
-    WHERE latest.rn = 1
-  `);
+async function getEnAlza(brandId) {
+  const [rowsAll, brandCreatorIds] = await Promise.all([
+    q(`
+      WITH ranked AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY creator_id ORDER BY captured_at DESC) AS rn
+        FROM ${DATASET}.creator_metric_snapshots
+      )
+      SELECT
+        latest.creator_id,
+        latest.captured_at AS latest_captured_at, prev.captured_at AS prev_captured_at,
+        latest.ig_seguidores AS l_ig_seg, prev.ig_seguidores AS p_ig_seg,
+        latest.ig_engagement_rate AS l_ig_er, prev.ig_engagement_rate AS p_ig_er,
+        latest.ig_videos_virales AS l_ig_vir, prev.ig_videos_virales AS p_ig_vir,
+        latest.tt_seguidores AS l_tt_seg, prev.tt_seguidores AS p_tt_seg,
+        latest.tt_engagement_rate AS l_tt_er, prev.tt_engagement_rate AS p_tt_er,
+        latest.tt_videos_virales AS l_tt_vir, prev.tt_videos_virales AS p_tt_vir
+      FROM ranked latest
+      JOIN ranked prev ON latest.creator_id = prev.creator_id AND prev.rn = 2
+      WHERE latest.rn = 1
+    `),
+    // Misma regla de asociación creador↔marca que /api/creators: marca de origen o cualquier campaña con esa marca.
+    brandId
+      ? q(`
+          SELECT creator_id FROM ${DATASET}.creators WHERE brand_id = @brandId
+          UNION DISTINCT
+          SELECT creator_id FROM ${DATASET}.campaign_creators WHERE brand_id = @brandId
+        `, { brandId })
+      : Promise.resolve(null),
+  ]);
+
+  const allowedIds = brandCreatorIds ? new Set(brandCreatorIds.map(r => r.creator_id)) : null;
+  const rows = allowedIds ? rowsAll.filter(r => allowedIds.has(r.creator_id)) : rowsAll;
 
   if (!rows.length) return { disponible: false, creadores: [] };
 
@@ -326,11 +347,11 @@ async function getEnAlza() {
   return { disponible: true, creadores: candidatos.slice(0, MAX_EN_ALZA) };
 }
 
-export async function getRecomendaciones() {
+export async function getRecomendaciones(brandId) {
   const [topCreadores, enAlza, exColaboradores] = await Promise.all([
-    getTopCreadores(),
-    getEnAlza(),
-    getExColaboradoresMejorado(),
+    getTopCreadores(brandId),
+    getEnAlza(brandId),
+    getExColaboradoresMejorado(brandId),
   ]);
 
   return { topCreadores, enAlza, exColaboradores };

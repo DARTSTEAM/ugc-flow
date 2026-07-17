@@ -1,4 +1,4 @@
-import type { UGC, Canal, Campana, EstadoEnCampana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana, SentimientoCampana, UserProfile, RecomendacionesResponse, RefreshGateStatus } from './data';
+import type { UGC, Canal, Campana, EstadoEnCampana, EvaluacionOrganica, EvaluacionPauta, EvaluacionPerfil, EvaluacionPerfilTiktok, ContenidoCampana, CampaignContentResponse, MetricasCampana, SentimientoCampana, UserProfile, RecomendacionesResponse, RefreshGateStatus, Brand, GroupOverview } from './data';
 
 const BASE = '/api';
 
@@ -201,10 +201,20 @@ export async function fetchCreatorContent(creatorId: string): Promise<ContenidoC
   return json<ContenidoCampana[]>(`/creators/${creatorId}/content`);
 }
 
+// ─── Brands ─────────────────────────────────────────────────────────
+
+export async function fetchBrands(): Promise<Brand[]> {
+  return json<Brand[]>('/brands');
+}
+
+export async function fetchGroupOverview(): Promise<GroupOverview> {
+  return json<GroupOverview>('/group-overview');
+}
+
 // ─── Recomendaciones ────────────────────────────────────────────────
 
-export async function fetchRecomendaciones(): Promise<RecomendacionesResponse> {
-  return json<RecomendacionesResponse>('/recomendaciones');
+export async function fetchRecomendaciones(brandId?: string | null): Promise<RecomendacionesResponse> {
+  return json<RecomendacionesResponse>(`/recomendaciones${brandId ? `?brandId=${encodeURIComponent(brandId)}` : ''}`);
 }
 
 export async function fetchRefreshStatus(): Promise<RefreshGateStatus> {
@@ -235,7 +245,7 @@ export async function fetchProfile(): Promise<UserProfile> {
   return json<UserProfile>('/profile');
 }
 
-export async function updateProfile(profile: Pick<UserProfile, 'nombre' | 'area' | 'email' | 'fotoUrl'>): Promise<void> {
+export async function updateProfile(profile: Pick<UserProfile, 'nombre' | 'area' | 'email' | 'fotoUrl' | 'marcaAsignada'>): Promise<void> {
   await json('/profile', {
     method: 'PUT',
     body: JSON.stringify(profile),

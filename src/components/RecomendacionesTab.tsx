@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { getInitials, avatarColor } from '../utils';
 import { fetchRecomendaciones, fetchRefreshStatus, startRecomendacionesRefresh } from '../api';
+import { useCompany } from '../context/CompanyContext';
 import type {
   RecomendacionesResponse, RefreshGateStatus,
   CreadorTop, CreadorEnAlza, ExColaborador,
@@ -388,6 +389,7 @@ function ExColaboradorCard({ c, onClick }: { c: ExColaborador; onClick: () => vo
 }
 
 export default function RecomendacionesTab({ ugcs, campanas, onUpdateUGC, onAsignar, onGoToChat }: Props) {
+  const { selectedBrandId } = useCompany();
   const [searchParams, setSearchParams] = useSearchParams();
   const section = (searchParams.get('section') as SectionId | null) ?? 'top-creadores';
 
@@ -418,11 +420,12 @@ export default function RecomendacionesTab({ ugcs, campanas, onUpdateUGC, onAsig
   }
 
   const loadData = useCallback(() => {
-    fetchRecomendaciones()
+    setLoading(true);
+    fetchRecomendaciones(selectedBrandId)
       .then(d => { setData(d); setError(null); })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [selectedBrandId]);
 
   const loadGate = useCallback(() => {
     fetchRefreshStatus().then(setGate).catch(() => {});

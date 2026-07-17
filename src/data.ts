@@ -89,6 +89,7 @@ export interface UGC {
   etiquetas?: string[];
   phone?: string;                          // número WhatsApp del creador
   usernameTiktok?: string;
+  brandIds?: string[];                     // marcas asociadas (origen + campañas en las que participó)
   evaluacionPerfil?: EvaluacionPerfil;            // datos de Kernel Instagram (solo lectura)
   evaluacionPerfilTiktok?: EvaluacionPerfilTiktok; // datos de Kernel TikTok (solo lectura)
   evaluacionOrganica?: EvaluacionOrganica;         // form manual — contenido orgánico
@@ -199,6 +200,7 @@ export interface Campana {
   fechaFin: string;
   ugcs: UGCEnCampana[];
   marca?: string;
+  marcaId?: string | null;   // brand_id (p.ej. 'popeyes') — usado para filtrar por empresa, a diferencia de `marca` que es el nombre para mostrar
   mensajeContacto?: string;  // template de WhatsApp para outreach masivo
 }
 
@@ -289,4 +291,43 @@ export interface UserProfile {
   area: string;
   email: string | null;
   fotoUrl: string | null;   // data URL (base64) o link externo
+  marcaAsignada: string | null;   // brand_id preseleccionado en el selector de empresa (null = Grupo NGR)
+}
+
+export interface Brand {
+  id: string;
+  nombre: string;
+}
+
+// ─── Grupo NGR ──────────────────────────────────────────────────────────────
+
+export interface BrandComparativa {
+  brandId: string;
+  nombre: string;
+  campanasActivas: number;
+  campanasTotal: number;
+  creadoresActivos: number;
+  alcanceTotal: number;
+  engagementRate: number | null;
+}
+
+export interface CampanaReciente {
+  id: string;
+  nombre: string;
+  marcaId: string;
+  marca: string;
+  estado: string;
+  fechaInicio: string;
+  alcance: number;
+}
+
+export interface GroupOverview {
+  totales: {
+    campanasActivas: number;
+    creadoresActivos: number;
+    alcanceTotal: number;
+    marcasConActividad: number;
+  };
+  comparativa: BrandComparativa[];
+  campanasRecientes: CampanaReciente[];
 }

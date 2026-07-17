@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import BienvenidoView from './components/BienvenidoView.tsx'
+import { CompanyProvider } from './context/CompanyContext.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -11,7 +12,7 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         {/* Standalone: fuera del shell de la app (sin sidebar/nav) y sin link desde ningún lado — solo por URL directa */}
         <Route path="/bienvenido" element={<BienvenidoView />} />
-        <Route path="/*" element={<App />} />
+        <Route path="/*" element={<CompanyProvider><App /></CompanyProvider>} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

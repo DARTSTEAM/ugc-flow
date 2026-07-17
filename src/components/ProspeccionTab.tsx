@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, MapPin, Users, TrendingUp, Calendar, ArrowRight, Search, Clock, CheckCircle2, FileText, ChevronDown } from 'lucide-react';
+import { Plus, MapPin, Users, TrendingUp, Calendar, ArrowRight, Search, Clock, CheckCircle2, FileText, ChevronDown, Building2 } from 'lucide-react';
 import type { Busqueda, EstadoBusqueda } from './BusquedaDrawer';
 import BusquedaDrawer from './BusquedaDrawer';
 import NuevaBusquedaModal from './NuevaBusquedaModal';
+import { useCompany } from '../context/CompanyContext';
 
 // ── Mock data ───────────────────────────────────────────────────────────────
 const BUSQUEDAS_MOCK: Busqueda[] = [
@@ -119,6 +120,8 @@ function fmtNum(n: number): string {
 
 // ── Component ───────────────────────────────────────────────────────────────
 export default function ProspeccionTab() {
+  const { brands, selectedBrandId } = useCompany();
+  const marcaActual = brands.find(b => b.id === selectedBrandId)?.nombre;
   const [busquedas, setBusquedas] = useState<Busqueda[]>(BUSQUEDAS_MOCK);
   const [selected, setSelected] = useState<Busqueda | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -152,6 +155,14 @@ export default function ProspeccionTab() {
 
   return (
     <div className="h-full flex flex-col gap-5">
+
+      {marcaActual && (
+        <div className="flex items-center gap-1.5 text-xs font-semibold w-fit px-3 py-1.5 rounded-xl"
+          style={{ backgroundColor: 'var(--color-brand-light)', color: 'var(--color-brand)' }}>
+          <Building2 className="w-3.5 h-3.5" />
+          Buscando para: {marcaActual}
+        </div>
+      )}
 
       {/* ── Stats bar ─────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

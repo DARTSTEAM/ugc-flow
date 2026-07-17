@@ -8,6 +8,7 @@ import { scrapeCreatorProfiles, scrapeTikTokProfiles, scrapeCampaignContent, ref
 import { detectPlatform } from './kernel/scrapers/content-post.js';
 import { recalcularScore } from './score-service.js';
 import { computeCampaignMetrics } from './metrics-service.js';
+import { getGroupOverview } from './group-metrics-service.js';
 import {
   getRecomendaciones, getRefreshGateStatus, getWatchlistCreatorIds,
   startRefreshRun, completeRefreshRun, failRefreshRun,
@@ -98,7 +99,7 @@ async function marcarInactivosPorCierre(campaignId) {
 // ─── GET /api/creators ──────────────────────────────────────────────
 app.get('/api/creators', async (req, res) => {
   try {
-    const [creators, allMessages] = await Promise.all([
+    const [creators, allMessages, brandLinks] = await Promise.all([
       q(`
         SELECT creator_id, full_name, username, platform, canal, estado, score,
                ultima_actividad, campana_asignada, seguidores_display, bio, brand_id,
@@ -110,7 +111,8 @@ app.get('/api/creators', async (req, res) => {
         SELECT creator_id, message_id, tipo, texto, fecha, orden
         FROM ${DATASET}.messages
         ORDER BY creator_id, orden
-      `)
+      `),
+      q(`SELECT DISTINCT creator_id, brand_id FROM ${DATASET}.campaign_creators`),
     ]);
 
     const messagesMap = {};
@@ -124,22 +126,35 @@ app.get('/api/creators', async (req, res) => {
       });
     });
 
-    const result = creators.map(c => ({
-      id: c.creator_id,
-      nombre: c.full_name || c.username || c.creator_id,
-      canal: c.canal || c.platform || 'TikTok',
-      estado: c.estado || 'Pendiente',
-      score: c.score || 0,
-      ultimaActividad: c.ultima_actividad || '',
-      campanasignada: c.campana_asignada || null,
-      seguidores: c.seguidores_display || '',
-      bio: c.bio || '',
-      conversacion: messagesMap[c.creator_id] || [],
-      calificacion: [],
-      scoreBreakdown: [],
-      etiquetas: (() => { try { return JSON.parse(c.etiquetas || '[]'); } catch { return []; } })(),
-      usernameTiktok: c.username_tiktok || undefined,
-    }));
+    // Un creador "pertenece" a una marca si es su marca de origen (creators.brand_id)
+    // o si trabajó alguna campaña de esa marca — un mismo creador puede tener varias.
+    const brandIdsMap = {};
+    brandLinks.forEach(r => {
+      if (!brandIdsMap[r.creator_id]) brandIdsMap[r.creator_id] = new Set();
+      if (r.brand_id) brandIdsMap[r.creator_id].add(r.brand_id);
+    });
+
+    const result = creators.map(c => {
+      const brandIds = brandIdsMap[c.creator_id] || new Set();
+      if (c.brand_id) brandIds.add(c.brand_id);
+      return {
+        id: c.creator_id,
+        nombre: c.full_name || c.username || c.creator_id,
+        canal: c.canal || c.platform || 'TikTok',
+        estado: c.estado || 'Pendiente',
+        score: c.score || 0,
+        ultimaActividad: c.ultima_actividad || '',
+        campanasignada: c.campana_asignada || null,
+        seguidores: c.seguidores_display || '',
+        bio: c.bio || '',
+        conversacion: messagesMap[c.creator_id] || [],
+        calificacion: [],
+        scoreBreakdown: [],
+        etiquetas: (() => { try { return JSON.parse(c.etiquetas || '[]'); } catch { return []; } })(),
+        usernameTiktok: c.username_tiktok || undefined,
+        brandIds: [...brandIds],
+      };
+    });
 
     res.json(result);
   } catch (err) {
@@ -361,7 +376,7 @@ app.patch('/api/creators/:id/etiquetas', async (req, res) => {
 app.get('/api/profile', async (req, res) => {
   try {
     const rows = await q(`
-      SELECT user_id, nombre, area, email, foto_url
+      SELECT user_id, nombre, area, email, foto_url, marca_asignada
       FROM ${DATASET}.users
       WHERE user_id = @id
     `, { id: CURRENT_USER_ID });
@@ -369,7 +384,7 @@ app.get('/api/profile', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: 'Perfil no encontrado' });
 
     const u = rows[0];
-    res.json({ id: u.user_id, nombre: u.nombre, area: u.area, email: u.email, fotoUrl: u.foto_url });
+    res.json({ id: u.user_id, nombre: u.nombre, area: u.area, email: u.email, fotoUrl: u.foto_url, marcaAsignada: u.marca_asignada || null });
   } catch (err) {
     console.error('GET /api/profile error:', err);
     res.status(500).json({ error: err.message });
@@ -379,17 +394,18 @@ app.get('/api/profile', async (req, res) => {
 // ─── PUT /api/profile ───────────────────────────────────────────────
 app.put('/api/profile', async (req, res) => {
   try {
-    const { nombre, area, email, fotoUrl } = req.body;
+    const { nombre, area, email, fotoUrl, marcaAsignada } = req.body;
 
     await q(`
       UPDATE ${DATASET}.users SET
         nombre = @nombre, area = @area, email = @email, foto_url = @fotoUrl,
-        updated_at = CURRENT_TIMESTAMP()
+        marca_asignada = @marcaAsignada, updated_at = CURRENT_TIMESTAMP()
       WHERE user_id = @id
     `, {
       id: CURRENT_USER_ID, nombre: nombre || '', area: area || '', email: email || null, fotoUrl: fotoUrl || null,
+      marcaAsignada: marcaAsignada || null,
     }, {
-      email: 'STRING', fotoUrl: 'STRING',
+      email: 'STRING', fotoUrl: 'STRING', marcaAsignada: 'STRING',
     });
 
     res.json({ ok: true });
@@ -415,10 +431,32 @@ app.get('/api/etiquetas', async (req, res) => {
   }
 });
 
+// ─── GET /api/brands ─────────────────────────────────────────────────
+app.get('/api/brands', async (req, res) => {
+  try {
+    const rows = await q(`SELECT brand_id, name FROM ${DATASET}.brands ORDER BY name`);
+    res.json(rows.map(b => ({ id: b.brand_id, nombre: b.name })));
+  } catch (err) {
+    console.error('GET /api/brands error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /api/group-overview ────────────────────────────────────────
+app.get('/api/group-overview', async (req, res) => {
+  try {
+    res.json(await getGroupOverview());
+  } catch (err) {
+    console.error('GET /api/group-overview error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── GET /api/recomendaciones ───────────────────────────────────────
 app.get('/api/recomendaciones', async (req, res) => {
   try {
-    res.json(await getRecomendaciones());
+    const { brandId } = req.query;
+    res.json(await getRecomendaciones(brandId || null));
   } catch (err) {
     console.error('GET /api/recomendaciones error:', err);
     res.status(500).json({ error: err.message });
@@ -497,6 +535,7 @@ app.get('/api/campaigns', async (req, res) => {
       id: c.campaign_id,
       nombre: c.name,
       marca: c.brand_name || c.brand_id,
+      marcaId: c.brand_id || null,
       estado: STATUS_TO_ES[c.status] || c.status,
       descripcion: c.description || '',
       fechaInicio: c.start_date?.value || c.start_date || '',
@@ -548,7 +587,9 @@ app.put('/api/campaigns/:id', async (req, res) => {
 app.post('/api/campaigns', async (req, res) => {
   try {
     const { id, nombre, marca, descripcion, fechaInicio, fechaFin, mensajeContacto } = req.body;
-    const brandId = marca?.toLowerCase().replace(/\s+/g, '') || 'popeyes';
+    // Slug alfanumérico puro: "Papa John's" y "Dunkin'" deben matchear los brand_id reales
+    // ('papajohns', 'dunkin') de la tabla `brands`, sin apóstrofos ni otros símbolos.
+    const brandId = marca?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'popeyes';
     await q(`
       INSERT INTO ${DATASET}.campaigns (campaign_id, brand_id, name, slug, start_date, end_date, status, description, mensaje_contacto, created_at)
       VALUES (@id, @brandId, @nombre, @slug, @startDate, @endDate, 'draft', @descripcion, @mensajeContacto, CURRENT_TIMESTAMP())
